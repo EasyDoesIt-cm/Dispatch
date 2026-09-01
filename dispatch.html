@@ -25,6 +25,8 @@
   v2.2.0  Import now fully replaces the task list instead of merging, with a confirm-before-wipe review step showing exactly how many tasks will be deleted/added before it executes
   v2.3.0  Redesigned Hold quick-options: removed 15 min and Tomorrow-9am, kept 1hr/4hr, added a Days/Weeks unit toggle with a number stepper (Days 1-6, Weeks 1-4) for longer holds
   v2.4.0  Added single-level "Undo" button in the header for misclicks — reverts the last status change, edit, hold, delete, or import overwrite; automatic background changes (auto-reactivation) don't count
+  v2.5.0  Added Cloud Sync via JSONBin.io — real cross-device sync (loads from cloud on open, pushes on save, polls every 30s), plus a separate companion page (quick-add.html) for adding a task from a phone home-screen bookmark without opening the full app
+  v2.5.1  Fixed Cloud Sync connection failures: use the correct X-Access-Key header, more defensive response parsing, and error messages now show the actual HTTP status/reason instead of a generic failure
   -- bump this on every future change, and add a line above --
 -->
 <html lang="en">
@@ -276,7 +278,7 @@
       <div class="brand-mark">D</div>
       <div>
         <h1>Dispatch</h1>
-        <div class="tag">work queue console · v2.4.0</div>
+        <div class="tag">work queue console · v2.5.1</div>
       </div>
     </div>
     <div class="stats">
@@ -284,7 +286,11 @@
       <div class="stat"><div class="n" id="statTime">0h</div><div class="l">est. remaining</div></div>
       <div class="stat"><div class="n" id="statDone">0</div><div class="l">closed today</div></div>
     </div>
-    <button class="btn btn-sm" id="undoBtn" disabled title="Nothing to undo" style="align-self:center;">↺ Undo</button>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <span id="cloudSyncStatus" class="mono" style="font-size:10px; color:var(--text-faint);"></span>
+      <button class="btn btn-sm" id="cloudSyncBtn" style="align-self:center;">☁ Cloud Sync</button>
+      <button class="btn btn-sm" id="undoBtn" disabled title="Nothing to undo" style="align-self:center;">↺ Undo</button>
+    </div>
   </div>
 
   <div class="grid grid-nextup">
@@ -515,6 +521,35 @@
   </div>
 </div>
 
+<div class="overlay" id="cloudSyncModalOverlay">
+  <div class="modal" style="max-width:440px;">
+    <h3>Cloud Sync</h3>
+    <p style="font-size:12.5px; color:var(--text-dim); line-height:1.5; margin-bottom:14px;">
+      Sync your tasks across devices using a free <a href="https://jsonbin.io" target="_blank" rel="noopener" style="color:var(--teal);">JSONBin.io</a> account. Use a scoped <strong>Access Key</strong> (Read + Update only) — not your Master Key. Stored only in this browser, never in this file.
+    </p>
+    <div class="field">
+      <label>Access Key</label>
+      <input type="password" id="cloudKeyInput" placeholder="$2a$...">
+    </div>
+    <div class="field">
+      <label>Bin ID</label>
+      <div style="display:flex; gap:6px;">
+        <input type="text" id="cloudBinInput" placeholder="paste an existing Bin ID, or create one →" style="flex:1;">
+        <button class="btn btn-sm" id="createBinBtn" type="button">Create New Bin</button>
+      </div>
+    </div>
+    <div id="cloudSyncError" style="font-size:12px; color:var(--red); margin-bottom:8px; display:none;"></div>
+    <div id="cloudSyncNote" style="font-size:12px; color:var(--teal); margin-bottom:8px; display:none;"></div>
+    <div class="modal-actions" style="justify-content:space-between;">
+      <button class="btn btn-ghost" id="disableCloudSyncBtn">Disable Sync</button>
+      <div style="display:flex; gap:10px;">
+        <button class="btn" id="cancelCloudSyncBtn">Cancel</button>
+        <button class="btn btn-primary" id="saveCloudSyncBtn">Save & Sync</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   "use strict";
@@ -582,11 +617,90 @@
     }
   };
 
-  async function loadTasks(){
+  const CLOUD_KEY_STORAGE = 'dispatch-cloud-key';
+  const CLOUD_BIN_STORAGE = 'dispatch-cloud-bin';
+  function getCloudConfig(){
     try{
-      const res = await storageAdapter.get('dispatch-tasks');
-      tasks = res && res.value ? JSON.parse(res.value) : [];
-    }catch(e){ tasks = []; }
+      const key = localStorage.getItem(CLOUD_KEY_STORAGE) || '';
+      const binId = localStorage.getItem(CLOUD_BIN_STORAGE) || '';
+      return (key && binId) ? { key, binId } : null;
+    }catch(e){ return null; }
+  }
+  function setCloudConfig(key, binId){
+    try{
+      if(key && binId){
+        localStorage.setItem(CLOUD_KEY_STORAGE, key);
+        localStorage.setItem(CLOUD_BIN_STORAGE, binId);
+      } else {
+        localStorage.removeItem(CLOUD_KEY_STORAGE);
+        localStorage.removeItem(CLOUD_BIN_STORAGE);
+      }
+    }catch(e){ /* localStorage unavailable */ }
+  }
+
+  async function jsonbinErrorDetail(res){
+    try{
+      const body = await res.json();
+      return body && body.message ? body.message : '';
+    }catch(e){ return ''; }
+  }
+
+  async function cloudFetchTasks(){
+    const cfg = getCloudConfig();
+    if(!cfg) return null;
+    const res = await fetch(`https://api.jsonbin.io/v3/b/${cfg.binId}/latest?meta=false`, {
+      headers: { 'X-Access-Key': cfg.key }
+    });
+    if(!res.ok){
+      const detail = await jsonbinErrorDetail(res);
+      throw new Error(`cloud fetch failed: ${res.status}${detail ? ' — ' + detail : ''}`);
+    }
+    const data = await res.json();
+    const record = data && data.record ? data.record : data;
+    return Array.isArray(record.tasks) ? record.tasks : [];
+  }
+  async function cloudPushTasks(taskArray){
+    const cfg = getCloudConfig();
+    if(!cfg) return false;
+    const res = await fetch(`https://api.jsonbin.io/v3/b/${cfg.binId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Access-Key': cfg.key },
+      body: JSON.stringify({ tasks: taskArray })
+    });
+    if(!res.ok){
+      const detail = await jsonbinErrorDetail(res);
+      throw new Error(`cloud push failed: ${res.status}${detail ? ' — ' + detail : ''}`);
+    }
+    return true;
+  }
+
+  function setCloudSyncStatus(text, isError){
+    const el = document.getElementById('cloudSyncStatus');
+    if(!el) return;
+    el.textContent = text;
+    el.style.color = isError ? 'var(--red)' : 'var(--teal)';
+  }
+
+  async function loadTasks(){
+    const cfg = getCloudConfig();
+    if(cfg){
+      try{
+        tasks = await cloudFetchTasks();
+        await storageAdapter.set('dispatch-tasks', JSON.stringify(tasks));
+        setCloudSyncStatus('☁ synced ' + new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}), false);
+      }catch(e){
+        setCloudSyncStatus('☁ offline — using local copy', true);
+        try{
+          const res = await storageAdapter.get('dispatch-tasks');
+          tasks = res && res.value ? JSON.parse(res.value) : [];
+        }catch(e2){ tasks = []; }
+      }
+    } else {
+      try{
+        const res = await storageAdapter.get('dispatch-tasks');
+        tasks = res && res.value ? JSON.parse(res.value) : [];
+      }catch(e){ tasks = []; }
+    }
     let changed = await reactivateExpired();
     if(changed) await saveTasks();
   }
@@ -620,6 +734,15 @@
   async function saveTasks(){
     try{ await storageAdapter.set('dispatch-tasks', JSON.stringify(tasks)); }
     catch(e){ console.error('save failed', e); }
+    const cfg = getCloudConfig();
+    if(cfg){
+      try{
+        await cloudPushTasks(tasks);
+        setCloudSyncStatus('☁ synced ' + new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}), false);
+      }catch(e){
+        setCloudSyncStatus('☁ sync failed — saved locally only', true);
+      }
+    }
   }
   async function loadChat(){
     try{
@@ -1056,6 +1179,76 @@
     document.getElementById('holdUnitWeeksBtn').classList.toggle('selected', holdStepperUnit === 'weeks');
     document.getElementById('holdStepValue').textContent = holdStepperValue;
     document.getElementById('holdStepUnitLabel').textContent = holdStepperUnit;
+  }
+
+  function openCloudSyncModal(){
+    const cfg = getCloudConfig();
+    document.getElementById('cloudKeyInput').value = cfg ? cfg.key : '';
+    document.getElementById('cloudBinInput').value = cfg ? cfg.binId : '';
+    document.getElementById('cloudSyncError').style.display = 'none';
+    document.getElementById('cloudSyncNote').style.display = 'none';
+    document.getElementById('cloudSyncModalOverlay').classList.add('open');
+  }
+  function closeCloudSyncModal(){ document.getElementById('cloudSyncModalOverlay').classList.remove('open'); }
+  function showCloudSyncError(msg){
+    const el = document.getElementById('cloudSyncError');
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+  function showCloudSyncNote(msg){
+    const el = document.getElementById('cloudSyncNote');
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+
+  async function createNewBin(){
+    const key = document.getElementById('cloudKeyInput').value.trim();
+    if(!key){ showCloudSyncError('Enter your Access Key first.'); return; }
+    document.getElementById('cloudSyncError').style.display = 'none';
+    try{
+      const res = await fetch('https://api.jsonbin.io/v3/b', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Access-Key': key, 'X-Bin-Name': 'Dispatch Tasks' },
+        body: JSON.stringify({ tasks: [] })
+      });
+      if(!res.ok){
+        const detail = await jsonbinErrorDetail(res);
+        throw new Error(`status ${res.status}${detail ? ' — ' + detail : ''}`);
+      }
+      const data = await res.json();
+      const newBinId = data && data.metadata && data.metadata.id;
+      if(!newBinId) throw new Error('no bin id returned in response');
+      document.getElementById('cloudBinInput').value = newBinId;
+      showCloudSyncNote('New bin created — click "Save & Sync" to finish.');
+    }catch(e){
+      showCloudSyncError('Could not create a bin: ' + e.message + ' (make sure the Access Key has Create permission granted).');
+    }
+  }
+
+  async function saveCloudSync(){
+    const key = document.getElementById('cloudKeyInput').value.trim();
+    const binId = document.getElementById('cloudBinInput').value.trim();
+    if(!key || !binId){ showCloudSyncError('Both an Access Key and a Bin ID are required.'); return; }
+    document.getElementById('cloudSyncError').style.display = 'none';
+    setCloudConfig(key, binId);
+    try{
+      await cloudFetchTasks();
+    }catch(e){
+      setCloudConfig('', '');
+      showCloudSyncError('Could not connect — ' + e.message);
+      return;
+    }
+    closeCloudSyncModal();
+    await loadTasks();
+    render();
+    appendMsg('system', 'Cloud Sync connected.');
+  }
+
+  function disableCloudSync(){
+    setCloudConfig('', '');
+    setCloudSyncStatus('', false);
+    closeCloudSyncModal();
+    appendMsg('system', 'Cloud Sync disabled — this device now uses its local copy only.');
   }
 
   function openHoldModal(id){
@@ -1614,6 +1807,12 @@ ${taskLines}`;
     render();
   });
   document.getElementById('undoBtn').addEventListener('click', performUndo);
+  document.getElementById('cloudSyncBtn').addEventListener('click', openCloudSyncModal);
+  document.getElementById('cancelCloudSyncBtn').addEventListener('click', closeCloudSyncModal);
+  document.getElementById('createBinBtn').addEventListener('click', createNewBin);
+  document.getElementById('saveCloudSyncBtn').addEventListener('click', saveCloudSync);
+  document.getElementById('disableCloudSyncBtn').addEventListener('click', disableCloudSync);
+  document.getElementById('cloudSyncModalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='cloudSyncModalOverlay') closeCloudSyncModal(); });
   document.getElementById('rerollBtn').addEventListener('click', ()=>{
     const active = tasks.filter(t=>t.status==='active');
     if(active.length < 2){ return; }
@@ -1709,6 +1908,21 @@ ${taskLines}`;
     setInterval(async ()=>{
       const changed = await reactivateExpired();
       if(changed){ await saveTasks(); render(); }
+
+      const cfg = getCloudConfig();
+      if(cfg){
+        try{
+          const remote = await cloudFetchTasks();
+          if(JSON.stringify(remote) !== JSON.stringify(tasks)){
+            tasks = remote;
+            await storageAdapter.set('dispatch-tasks', JSON.stringify(tasks));
+            render();
+          }
+          setCloudSyncStatus('☁ synced ' + new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}), false);
+        }catch(e){
+          setCloudSyncStatus('☁ offline — using local copy', true);
+        }
+      }
     }, 30000);
   }
   init();
