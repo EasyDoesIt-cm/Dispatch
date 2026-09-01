@@ -27,6 +27,7 @@
   v2.4.0  Added single-level "Undo" button in the header for misclicks — reverts the last status change, edit, hold, delete, or import overwrite; automatic background changes (auto-reactivation) don't count
   v2.5.0  Added Cloud Sync via JSONBin.io — real cross-device sync (loads from cloud on open, pushes on save, polls every 30s), plus a separate companion page (quick-add.html) for adding a task from a phone home-screen bookmark without opening the full app
   v2.5.1  Fixed Cloud Sync connection failures: use the correct X-Access-Key header, more defensive response parsing, and error messages now show the actual HTTP status/reason instead of a generic failure
+  v2.5.2  quick-add.html now uses the same favicon as Dispatch (D mark) instead of its own + mark
   -- bump this on every future change, and add a line above --
 -->
 <html lang="en">
@@ -278,7 +279,7 @@
       <div class="brand-mark">D</div>
       <div>
         <h1>Dispatch</h1>
-        <div class="tag">work queue console · v2.5.1</div>
+        <div class="tag">work queue console · v2.5.2</div>
       </div>
     </div>
     <div class="stats">

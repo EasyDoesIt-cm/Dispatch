@@ -2,7 +2,7 @@
 
 Dispatch is a single-file web app for managing a personal work portfolio: log tasks with priority, difficulty, and time estimates, and let the app suggest what to work on next based on a scoring system — or just ask it in plain language.
 
-**Current version: v2.5.1** (shown in the app header; see [Version History](#version-history) below)
+**Current version: v2.5.2** (shown in the app header; see [Version History](#version-history) below)
 
 ## Features
 
@@ -106,6 +106,7 @@ score = (6 − priority) × 22 − difficulty × 6 − min(estMinutes, 240) / 24
 | v2.4.0 | Added single-level "Undo" button in the header for misclicks |
 | v2.5.0 | Added Cloud Sync (JSONBin.io) for real cross-device sync, plus quick-add.html companion page for phone quick-capture |
 | v2.5.1 | Fixed Cloud Sync connection failures (correct auth header, defensive parsing, real error messages) |
+| v2.5.2 | quick-add.html now uses the same favicon as Dispatch |
 
 ## Notes & Limitations
 
