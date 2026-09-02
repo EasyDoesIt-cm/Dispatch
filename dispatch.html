@@ -30,6 +30,7 @@
   v2.5.2  quick-add.html now uses the same favicon as Dispatch (D mark) instead of its own + mark
   v2.6.0  Removed the automatic 30-second Cloud Sync poll (was consuming JSONBin free-tier quota fast) — Dispatch still syncs on open and on every save; added a manual "Sync Now" header button for on-demand refresh while the app is already open
   v2.7.0  Cloud Sync push is now non-blocking and batched (3s debounce) — actions like status changes no longer wait on the network round-trip; Sync Now flushes any pending push before pulling, and pending changes attempt a best-effort flush if the tab closes mid-batch
+  v2.8.0  Added "Set as Next Up" button to every active task card, to manually override Next Up while browsing (in lieu of Ask the Queue / Quick Match); quick-add.html now exposes all task fields (notes, priority, difficulty, minutes, due/daily/weekly, tags) instead of title-only
   -- bump this on every future change, and add a line above --
 -->
 <html lang="en">
@@ -281,7 +282,7 @@
       <div class="brand-mark">D</div>
       <div>
         <h1>Dispatch</h1>
-        <div class="tag">work queue console · v2.7.0</div>
+        <div class="tag">work queue console · v2.8.0</div>
       </div>
     </div>
     <div class="stats">
@@ -924,6 +925,7 @@
     if(t.status === 'active'){
       actions = `
         <button class="btn btn-sm" onclick="Dispatch.setStatus('${t.id}','done')">Done</button>
+        <button class="btn btn-sm btn-ghost" onclick="Dispatch.setNextUp('${t.id}')">Set as Next Up</button>
         <button class="btn btn-sm btn-ghost" onclick="Dispatch.openHoldModal('${t.id}')">Hold…</button>
         <button class="btn btn-sm btn-ghost" onclick="Dispatch.setStatus('${t.id}','parked')">Done for day</button>
         <button class="btn btn-sm btn-ghost" onclick="Dispatch.setStatus('${t.id}','deprioritized')">De-prioritize</button>
@@ -1157,6 +1159,13 @@
     }
   }
 
+  function setNextUp(id){
+    const active = tasks.filter(t=>t.status==='active');
+    if(!active.find(t=>t.id===id)) return;
+    lastSuggestedId = id;
+    renderNextUp(active);
+  }
+
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
@@ -1375,7 +1384,7 @@
   }
 
   window.Dispatch = {
-    setStatus, deleteTask, editTask, openHoldModal,
+    setStatus, deleteTask, editTask, openHoldModal, setNextUp,
     nuDebouncedField, nuCommitField, nuSetPriority, nuSetDifficulty,
     nuSetDue, nuToggleRecur, nuToggleWeekday
   };

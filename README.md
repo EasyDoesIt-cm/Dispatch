@@ -2,7 +2,7 @@
 
 Dispatch is a single-file web app for managing a personal work portfolio: log tasks with priority, difficulty, and time estimates, and let the app suggest what to work on next based on a scoring system — or just ask it in plain language.
 
-**Current version: v2.7.0** (shown in the app header; see [Version History](#version-history) below)
+**Current version: v2.8.0** (shown in the app header; see [Version History](#version-history) below)
 
 ## Features
 
@@ -11,6 +11,7 @@ Dispatch is a single-file web app for managing a personal work portfolio: log ta
 - **Difficulty gauge** — a half-moon dial (Easy → Hard) instead of a plain slider, color-coded on the same scale as priority.
 - **Automatic scoring & "Next Up"** — every task gets a numeric score from priority, difficulty, time, and due-date urgency; the top-scoring task is surfaced as a fully editable card (title, notes, priority, difficulty, time estimate, recurrence, tags all editable in place with auto-save), with a "Reroll" option.
 - **Quick Match** — four one-tap buttons (Low/High Energy × Little/Lots of Time, split at difficulty 3 and 30 minutes) that instantly set Next Up to the best-scoring task matching that combination — no API call, no cost. If the chosen combination has no matching task, it cascades down through the other combinations (checking Low Energy + Little Time last) before giving up.
+- **Set as Next Up** — every active task's ticket in the main list has a button to manually make it the Next Up pick, overriding whatever Ask the Queue, Quick Match, or the default scoring would have shown — useful when you already know what you want to work on while browsing the list.
 - **Status actions**:
   - **Done** — closes the task (can be manually reactivated later from the Closed section if needed).
   - **Done for Day** — removes it from today's queue; it reactivates automatically the next calendar day.
@@ -22,7 +23,7 @@ Dispatch is a single-file web app for managing a personal work portfolio: log ta
 - **Chat assistant ("Ask the Queue")** — describe how much time or energy you have, and it recommends the best-fitting active task, using the Anthropic API. Supports voice input (browser speech recognition) and optional spoken replies. Only your active (non-Hold/Parked/De-prioritized/Closed) tasks are ever sent to the API. In standalone mode with a personal API key, each message typically costs well under a cent (Haiku 4.5 pricing, compact task format) — cost scales mainly with how many active tasks you have, since the whole active list is resent each message.
 - **Undo** — a header button reverts the single most recent change (status change, edit, hold, delete, or import overwrite) for catching misclicks. Single-level only, and automatic background changes (like a Daily task auto-reactivating) don't count toward it.
 - **Cloud Sync** — optional real cross-device sync via a free [JSONBin.io](https://jsonbin.io) bin: Dispatch loads from the cloud on open and pushes on every save, so anything added elsewhere (like from Quick Add) shows up the next time you open or refresh Dispatch. Pushes are batched — changes made within a few seconds of each other are combined into a single network request (3-second debounce) instead of firing one per click, so the UI never waits on the network and JSONBin's free-tier quota lasts longer. A **Sync Now** button in the header lets you pull in changes on demand while Dispatch is already open. Falls back to the local cached copy if the network is unavailable. **Note:** Cloud Sync only works in the standalone version of Dispatch (downloaded file or hosted copy) — Claude's own artifact sandbox blocks outbound requests to third-party APIs like JSONBin, the same restriction that blocks microphone access there. See [Cloud Sync Setup](#cloud-sync-setup) below.
-- **Quick Add companion page** (`quick-add.html`) — a separate, minimal page (just a text box and a button) for adding a task from your phone without opening the full app. Writes directly to the same shared bin as Cloud Sync. Great as a home-screen bookmark. New tasks land with Medium priority, Medium difficulty, and a 30-minute estimate — easy to fine-tune later in Dispatch.
+- **Quick Add companion page** (`quick-add.html`) — a separate page for adding a task from your phone without opening the full app. Exposes the same fields you'd see adding a task in Dispatch — title, notes, priority, difficulty, minutes, due date/Daily/Weekly, tags — defaulting to Medium priority, Medium difficulty, and 30 minutes if you don't touch them. Writes directly to the same shared bin as Cloud Sync. Great as a home-screen bookmark.
 - **Export / Import** — download your task list as a `.json` file (also copied to clipboard) and import it elsewhere. **Import fully replaces your current task list** with the imported file's contents — it does not merge — and shows a confirm-before-wipe review step (with counts) before anything is deleted.
 
 ## Getting Started
@@ -65,7 +66,7 @@ To use it:
 1. Host `quick-add.html` somewhere reachable from your phone. The easiest option is **GitHub Pages** — enable it on this repo (Settings → Pages), which gives you a public URL like `https://<username>.github.io/<repo>/quick-add.html`.
 2. Open that URL on your phone and bookmark it to your home screen (in most mobile browsers: Share → Add to Home Screen) so it opens like a mini app with one tap.
 3. The first time you open it, it'll ask for the same Access Key and Bin ID you used in Dispatch's Cloud Sync setup — enter them once and it remembers them on that device.
-4. From then on: tap the icon, type a task, tap Add. It shows up in Dispatch the next time you open it, refresh it, or tap **Sync Now** in the header — with Medium priority, Medium difficulty, and a 30-minute estimate, ready to adjust in Dispatch.
+4. From then on: tap the icon, fill in your task (title required, everything else optional and defaulted), tap Add. It shows up in Dispatch the next time you open it, refresh it, or tap **Sync Now** in the header.
 
 ## How Scoring Works
 
@@ -110,6 +111,7 @@ score = (6 − priority) × 22 − difficulty × 6 − min(estMinutes, 240) / 24
 | v2.5.2 | quick-add.html now uses the same favicon as Dispatch |
 | v2.6.0 | Removed automatic 30-second Cloud Sync poll (was eating JSONBin quota); added manual "Sync Now" button |
 | v2.7.0 | Cloud Sync push is now non-blocking and batched (3s debounce) instead of blocking the UI on every action |
+| v2.8.0 | Added "Set as Next Up" button to task cards; quick-add.html now exposes all task fields instead of title-only |
 
 ## Notes & Limitations
 

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<!-- DISPATCH QUICK ADD — companion page, v1.1.0. Adds one task to the shared Dispatch cloud bin. -->
+<!-- DISPATCH QUICK ADD — companion page, v2.0.0. Adds one task to the shared Dispatch cloud bin. -->
+<!-- v2.0.0: exposes all task fields (notes, priority, difficulty, minutes, due/daily/weekly, tags) instead of title-only -->
 <!-- v1.1.0: favicon now matches Dispatch's icon (D mark) instead of the + mark -->
 <html lang="en">
 <head>
@@ -13,6 +14,7 @@
     --bg:#12161B; --panel:#1A2029; --panel2:#212836; --border:#2C3542;
     --text:#E9E6DE; --dim:#8B93A1; --faint:#566173;
     --amber:#E2A63B; --teal:#4E9E97; --red:#C1523D;
+    --p1:#4E9E97; --p2:#6FA96B; --p3:#E2A63B; --p4:#D98A3D; --p5:#C1523D;
   }
   *{ box-sizing:border-box; margin:0; padding:0; }
   body{
@@ -20,7 +22,41 @@
     min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px;
     background-image: radial-gradient(circle at 20% 10%, rgba(78,158,151,0.07), transparent 45%), radial-gradient(circle at 85% 90%, rgba(226,166,59,0.06), transparent 45%);
   }
-  .card{ width:100%; max-width:420px; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:26px; }
+  .card{ width:100%; max-width:460px; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:26px; }
+  .field{ margin-bottom:16px; }
+  .field-label{ display:block; font-size:11px; color:var(--dim); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em; }
+  .notes-input{ width:100%; background:var(--panel2); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:13px; padding:10px 12px; resize:vertical; min-height:60px; }
+  .notes-input:focus{ outline:none; border-color:var(--teal); }
+  .num-input, .date-input{ width:100%; background:var(--panel2); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:13px; padding:10px 12px; }
+  .num-input:focus, .date-input:focus{ outline:none; border-color:var(--teal); }
+  .tags-input{ width:100%; background:var(--panel2); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:13px; padding:10px 12px; }
+  .tags-input:focus{ outline:none; border-color:var(--teal); }
+
+  .priority-stack{ display:flex; flex-direction:column; gap:5px; }
+  .priority-btn{ display:flex; align-items:center; gap:8px; background:var(--panel2); border:1px solid var(--border); border-radius:5px; padding:9px 12px; font-size:13px; font-weight:700; text-align:left; }
+  .priority-btn::before{ content:''; width:8px; height:8px; border-radius:50%; background:currentColor; flex-shrink:0; opacity:0.55; }
+  .priority-btn.selected{ background:rgba(255,255,255,0.06); box-shadow: inset 0 0 0 1.5px currentColor; }
+  .priority-btn.selected::before{ opacity:1; }
+
+  .gauge-wrap{ display:flex; flex-direction:column; align-items:center; }
+  #difficultyGauge{ width:100%; max-width:220px; height:auto; overflow:visible; }
+  .gauge-seg{ fill:currentColor; opacity:0.28; stroke:var(--border); stroke-width:1; cursor:pointer; }
+  .gauge-seg.selected{ opacity:1; stroke:currentColor; }
+  .gauge-num{ fill:var(--dim); font-family:'JetBrains Mono',monospace; font-size:14px; text-anchor:middle; pointer-events:none; }
+  .gauge-num.selected{ fill:#171310; font-weight:700; }
+  .gauge-labels{ display:flex; justify-content:space-between; align-items:center; width:100%; max-width:190px; margin-top:-4px; }
+  .gauge-side{ font-size:10.5px; text-transform:uppercase; letter-spacing:0.06em; color:var(--faint); }
+  .gauge-current{ font-size:17px; font-weight:700; }
+
+  .due-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .due-header .field-label{ margin-bottom:0; }
+  .recur-toggles{ display:flex; align-items:center; gap:10px; }
+  .daily-toggle{ display:flex; align-items:center; gap:4px; font-size:10px; color:var(--teal); text-transform:uppercase; letter-spacing:0.06em; cursor:pointer; }
+  .daily-toggle input{ width:auto; accent-color:var(--teal); }
+  .weekday-picker{ display:flex; gap:5px; margin-top:8px; }
+  .weekday-btn{ flex:1; background:var(--panel2); border:1px solid var(--border); border-radius:5px; padding:9px 0; font-size:11.5px; font-weight:700; color:var(--dim); text-align:center; }
+  .weekday-btn.selected{ background:rgba(78,158,151,0.18); border-color:var(--teal); color:var(--teal); }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   .brand{ display:flex; align-items:center; gap:10px; margin-bottom:22px; }
   .brand-mark{ width:32px; height:32px; border-radius:6px; background:linear-gradient(135deg,var(--amber),var(--red)); display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace; font-weight:700; color:#12161B; font-size:17px; }
   .brand h1{ font-size:16px; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; }
@@ -75,9 +111,75 @@
   <div id="addForm">
     <div class="confirm" id="confirmMsg">✓ Added to your queue</div>
     <div class="error" id="addError"></div>
-    <input type="text" class="task-input" id="taskInput" placeholder="What needs doing?" autocomplete="off">
+
+    <div class="field">
+      <input type="text" class="task-input" id="taskInput" placeholder="What needs doing?" autocomplete="off">
+    </div>
+
+    <div class="field">
+      <label class="field-label">Notes</label>
+      <textarea class="notes-input" id="notesInput" placeholder="Optional context…"></textarea>
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label class="field-label">Priority</label>
+        <div class="priority-stack" id="priorityStack">
+          <button type="button" class="priority-btn" data-p="1" style="color:var(--p5)">Top</button>
+          <button type="button" class="priority-btn" data-p="2" style="color:var(--p4)">High</button>
+          <button type="button" class="priority-btn selected" data-p="3" style="color:var(--p3)">Medium</button>
+          <button type="button" class="priority-btn" data-p="4" style="color:var(--p2)">Low</button>
+          <button type="button" class="priority-btn" data-p="5" style="color:var(--p1)">Whatevs</button>
+        </div>
+        <input type="hidden" id="fPriority" value="3">
+      </div>
+      <div class="field">
+        <label class="field-label">Difficulty</label>
+        <div class="gauge-wrap">
+          <svg id="difficultyGauge" viewBox="0 0 200 112"></svg>
+          <div class="gauge-labels">
+            <span class="gauge-side">Easy</span>
+            <span class="gauge-current" id="difficultyNum">3</span>
+            <span class="gauge-side">Hard</span>
+          </div>
+        </div>
+        <input type="hidden" id="fDifficulty" value="3">
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label class="field-label">Minutes</label>
+        <input type="number" class="num-input" id="fTime" value="30" min="5" step="5">
+      </div>
+      <div class="field" id="dueDateField">
+        <div class="due-header">
+          <label class="field-label" id="dueDateLabel">Due date</label>
+          <div class="recur-toggles">
+            <label class="daily-toggle"><input type="checkbox" id="fWeekly"> WEEKLY</label>
+            <label class="daily-toggle"><input type="checkbox" id="fDaily"> DAILY</label>
+          </div>
+        </div>
+        <input type="date" class="date-input" id="fDue">
+        <div class="weekday-picker" id="weekdayPicker" style="display:none;">
+          <button type="button" class="weekday-btn" data-day="0">S</button>
+          <button type="button" class="weekday-btn" data-day="1">M</button>
+          <button type="button" class="weekday-btn" data-day="2">T</button>
+          <button type="button" class="weekday-btn" data-day="3">W</button>
+          <button type="button" class="weekday-btn" data-day="4">T</button>
+          <button type="button" class="weekday-btn" data-day="5">F</button>
+          <button type="button" class="weekday-btn" data-day="6">S</button>
+        </div>
+        <input type="hidden" id="fWeeklyDays" value="0">
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">Tags</label>
+      <input type="text" class="tags-input" id="fTags" placeholder="comma, separated">
+    </div>
+
     <button class="add-btn" id="addBtn" type="button">Add Task</button>
-    <div class="hint">Adds with Medium priority, Medium difficulty, 30 min estimate — fine-tune anytime in Dispatch.</div>
     <div class="reconfig"><a id="reconfigLink">Reconnect to a different bin</a></div>
   </div>
 </div>
@@ -170,6 +272,115 @@
 
   document.getElementById('reconfigLink').addEventListener('click', showSetup);
 
+  /* ---- Priority pills ---- */
+  function setPriority(p){
+    document.getElementById('fPriority').value = p;
+    document.querySelectorAll('.priority-btn').forEach(b=>{
+      b.classList.toggle('selected', Number(b.dataset.p) === p);
+    });
+  }
+  document.querySelectorAll('.priority-btn').forEach(b=>{
+    b.addEventListener('click', ()=> setPriority(Number(b.dataset.p)));
+  });
+
+  /* ---- Difficulty gauge ---- */
+  function setDifficulty(v){
+    document.getElementById('fDifficulty').value = v;
+    const numEl = document.getElementById('difficultyNum');
+    numEl.textContent = v;
+    numEl.style.color = `var(--p${v})`;
+    document.querySelectorAll('.gauge-seg').forEach(el=>{
+      el.classList.toggle('selected', Number(el.dataset.v) === v);
+    });
+    document.querySelectorAll('.gauge-num').forEach(el=>{
+      el.classList.toggle('selected', Number(el.dataset.v) === v);
+    });
+  }
+  function polarPoint(cx,cy,r,angleDeg){
+    const rad = angleDeg * Math.PI / 180;
+    return { x: cx + r * Math.cos(rad), y: cy - r * Math.sin(rad) };
+  }
+  function wedgePath(cx,cy,rOuter,rInner,a0,a1){
+    const o0 = polarPoint(cx,cy,rOuter,a0);
+    const o1 = polarPoint(cx,cy,rOuter,a1);
+    const i1 = polarPoint(cx,cy,rInner,a1);
+    const i0 = polarPoint(cx,cy,rInner,a0);
+    return `M ${o0.x} ${o0.y} A ${rOuter} ${rOuter} 0 0 1 ${o1.x} ${o1.y} L ${i1.x} ${i1.y} A ${rInner} ${rInner} 0 0 0 ${i0.x} ${i0.y} Z`;
+  }
+  function buildDifficultyGauge(){
+    const svg = document.getElementById('difficultyGauge');
+    const cx = 100, cy = 104, rOuter = 92, rInner = 54;
+    let html = '';
+    for(let v=1; v<=5; v++){
+      const a0 = 180 - (v-1)*36;
+      const a1 = 180 - v*36;
+      const path = wedgePath(cx,cy,rOuter,rInner,a0,a1);
+      const mid = polarPoint(cx,cy,(rOuter+rInner)/2,(a0+a1)/2);
+      html += `<path d="${path}" class="gauge-seg" data-v="${v}" style="color:var(--p${v})"></path>`;
+      html += `<text x="${mid.x}" y="${mid.y+4}" class="gauge-num" data-v="${v}">${v}</text>`;
+    }
+    svg.innerHTML = html;
+    svg.querySelectorAll('.gauge-seg, .gauge-num').forEach(el=>{
+      el.addEventListener('click', ()=> setDifficulty(Number(el.dataset.v)));
+    });
+  }
+  buildDifficultyGauge();
+
+  /* ---- Weekday multi-select ---- */
+  function getWeeklyDaysValue(){
+    return document.getElementById('fWeeklyDays').value.split(',').filter(s=>s!=='').map(Number);
+  }
+  function setWeeklyDaysValue(arr){
+    document.getElementById('fWeeklyDays').value = arr.slice().sort((a,b)=>a-b).join(',');
+    document.querySelectorAll('.weekday-btn').forEach(b=>{
+      b.classList.toggle('selected', arr.includes(Number(b.dataset.day)));
+    });
+  }
+  function toggleWeeklyDay(d){
+    const arr = getWeeklyDaysValue();
+    const idx = arr.indexOf(d);
+    if(idx === -1) arr.push(d); else arr.splice(idx,1);
+    setWeeklyDaysValue(arr.length ? arr : [new Date().getDay()]);
+  }
+  document.querySelectorAll('.weekday-btn').forEach(b=>{
+    b.addEventListener('click', ()=> toggleWeeklyDay(Number(b.dataset.day)));
+  });
+
+  /* ---- Daily/Weekly toggle + due date visibility ---- */
+  function updateDueVisibility(){
+    const daily = document.getElementById('fDaily').checked;
+    const weekly = document.getElementById('fWeekly').checked;
+    document.getElementById('fDue').style.display = (daily || weekly) ? 'none' : 'block';
+    document.getElementById('weekdayPicker').style.display = weekly ? 'flex' : 'none';
+    document.getElementById('dueDateLabel').textContent = weekly ? 'Refreshes on' : 'Due date';
+  }
+  document.getElementById('fDaily').addEventListener('change', e=>{
+    if(e.target.checked) document.getElementById('fWeekly').checked = false;
+    updateDueVisibility();
+  });
+  document.getElementById('fWeekly').addEventListener('change', e=>{
+    if(e.target.checked){
+      document.getElementById('fDaily').checked = false;
+      setWeeklyDaysValue([new Date().getDay()]);
+    }
+    updateDueVisibility();
+  });
+
+  function resetForm(){
+    document.getElementById('taskInput').value = '';
+    document.getElementById('notesInput').value = '';
+    setPriority(3);
+    setDifficulty(3);
+    document.getElementById('fTime').value = 30;
+    document.getElementById('fDue').value = '';
+    document.getElementById('fDaily').checked = false;
+    document.getElementById('fWeekly').checked = false;
+    setWeeklyDaysValue([new Date().getDay()]);
+    updateDueVisibility();
+    document.getElementById('fTags').value = '';
+  }
+  resetForm();
+
   async function submitTask(){
     const input = document.getElementById('taskInput');
     const title = input.value.trim();
@@ -178,10 +389,14 @@
     const btn = document.getElementById('addBtn');
     errEl.classList.remove('show');
     confirmEl.classList.remove('show');
-    if(!title) return;
+    if(!title){ input.focus(); return; }
 
     const cfg = getConfig();
     if(!cfg){ showSetup(); return; }
+
+    const daily = document.getElementById('fDaily').checked;
+    const weekly = document.getElementById('fWeekly').checked;
+    const tags = document.getElementById('fTags').value.split(',').map(s=>s.trim()).filter(Boolean);
 
     btn.disabled = true;
     btn.textContent = 'Adding…';
@@ -189,13 +404,19 @@
       const current = await fetchTasks(cfg);
       const newTask = {
         id: 'id-' + Date.now().toString(36) + Math.random().toString(36).slice(2,6),
-        title, notes: '', priority: 3, difficulty: 3, estMinutes: 30,
-        dueDate: null, daily: false, weekly: false, weeklyDays: [],
-        tags: [], status: 'active', createdAt: new Date().toISOString()
+        title,
+        notes: document.getElementById('notesInput').value.trim(),
+        priority: Number(document.getElementById('fPriority').value),
+        difficulty: Number(document.getElementById('fDifficulty').value),
+        estMinutes: Number(document.getElementById('fTime').value) || 5,
+        dueDate: document.getElementById('fDue').value || null,
+        daily, weekly,
+        weeklyDays: getWeeklyDaysValue().length ? getWeeklyDaysValue() : [new Date().getDay()],
+        tags, status: 'active', createdAt: new Date().toISOString()
       };
       current.push(newTask);
       await pushTasks(cfg, current);
-      input.value = '';
+      resetForm();
       confirmEl.classList.add('show');
       setTimeout(()=> confirmEl.classList.remove('show'), 2500);
     }catch(e){
