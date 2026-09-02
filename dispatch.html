@@ -28,6 +28,7 @@
   v2.5.0  Added Cloud Sync via JSONBin.io — real cross-device sync (loads from cloud on open, pushes on save, polls every 30s), plus a separate companion page (quick-add.html) for adding a task from a phone home-screen bookmark without opening the full app
   v2.5.1  Fixed Cloud Sync connection failures: use the correct X-Access-Key header, more defensive response parsing, and error messages now show the actual HTTP status/reason instead of a generic failure
   v2.5.2  quick-add.html now uses the same favicon as Dispatch (D mark) instead of its own + mark
+  v2.6.0  Removed the automatic 30-second Cloud Sync poll (was consuming JSONBin free-tier quota fast) — Dispatch still syncs on open and on every save; added a manual "Sync Now" header button for on-demand refresh while the app is already open
   -- bump this on every future change, and add a line above --
 -->
 <html lang="en">
@@ -279,7 +280,7 @@
       <div class="brand-mark">D</div>
       <div>
         <h1>Dispatch</h1>
-        <div class="tag">work queue console · v2.5.2</div>
+        <div class="tag">work queue console · v2.6.0</div>
       </div>
     </div>
     <div class="stats">
@@ -289,6 +290,7 @@
     </div>
     <div style="display:flex; align-items:center; gap:10px;">
       <span id="cloudSyncStatus" class="mono" style="font-size:10px; color:var(--text-faint);"></span>
+      <button class="btn btn-sm" id="syncNowBtn" style="align-self:center; display:none;">↻ Sync Now</button>
       <button class="btn btn-sm" id="cloudSyncBtn" style="align-self:center;">☁ Cloud Sync</button>
       <button class="btn btn-sm" id="undoBtn" disabled title="Nothing to undo" style="align-self:center;">↺ Undo</button>
     </div>
@@ -680,6 +682,29 @@
     if(!el) return;
     el.textContent = text;
     el.style.color = isError ? 'var(--red)' : 'var(--teal)';
+  }
+  function updateSyncNowVisibility(){
+    const btn = document.getElementById('syncNowBtn');
+    if(btn) btn.style.display = getCloudConfig() ? 'inline-block' : 'none';
+  }
+
+  async function performManualSync(){
+    const cfg = getCloudConfig();
+    if(!cfg) return;
+    const btn = document.getElementById('syncNowBtn');
+    btn.disabled = true;
+    try{
+      const remote = await cloudFetchTasks();
+      if(JSON.stringify(remote) !== JSON.stringify(tasks)){
+        tasks = remote;
+        await storageAdapter.set('dispatch-tasks', JSON.stringify(tasks));
+        render();
+      }
+      setCloudSyncStatus('☁ synced ' + new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}), false);
+    }catch(e){
+      setCloudSyncStatus('☁ sync failed — ' + e.message, true);
+    }
+    btn.disabled = false;
   }
 
   async function loadTasks(){
@@ -1242,12 +1267,14 @@
     closeCloudSyncModal();
     await loadTasks();
     render();
+    updateSyncNowVisibility();
     appendMsg('system', 'Cloud Sync connected.');
   }
 
   function disableCloudSync(){
     setCloudConfig('', '');
     setCloudSyncStatus('', false);
+    updateSyncNowVisibility();
     closeCloudSyncModal();
     appendMsg('system', 'Cloud Sync disabled — this device now uses its local copy only.');
   }
@@ -1809,6 +1836,7 @@ ${taskLines}`;
   });
   document.getElementById('undoBtn').addEventListener('click', performUndo);
   document.getElementById('cloudSyncBtn').addEventListener('click', openCloudSyncModal);
+  document.getElementById('syncNowBtn').addEventListener('click', performManualSync);
   document.getElementById('cancelCloudSyncBtn').addEventListener('click', closeCloudSyncModal);
   document.getElementById('createBinBtn').addEventListener('click', createNewBin);
   document.getElementById('saveCloudSyncBtn').addEventListener('click', saveCloudSync);
@@ -1897,6 +1925,7 @@ ${taskLines}`;
   /* ============== INIT ============== */
   async function init(){
     renderChips();
+    updateSyncNowVisibility();
     await loadTasks();
     await loadChat();
     if(chatHistory.length === 0){
@@ -1909,21 +1938,6 @@ ${taskLines}`;
     setInterval(async ()=>{
       const changed = await reactivateExpired();
       if(changed){ await saveTasks(); render(); }
-
-      const cfg = getCloudConfig();
-      if(cfg){
-        try{
-          const remote = await cloudFetchTasks();
-          if(JSON.stringify(remote) !== JSON.stringify(tasks)){
-            tasks = remote;
-            await storageAdapter.set('dispatch-tasks', JSON.stringify(tasks));
-            render();
-          }
-          setCloudSyncStatus('☁ synced ' + new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}), false);
-        }catch(e){
-          setCloudSyncStatus('☁ offline — using local copy', true);
-        }
-      }
     }, 30000);
   }
   init();

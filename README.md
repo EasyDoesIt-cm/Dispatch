@@ -2,7 +2,7 @@
 
 Dispatch is a single-file web app for managing a personal work portfolio: log tasks with priority, difficulty, and time estimates, and let the app suggest what to work on next based on a scoring system — or just ask it in plain language.
 
-**Current version: v2.5.2** (shown in the app header; see [Version History](#version-history) below)
+**Current version: v2.6.0** (shown in the app header; see [Version History](#version-history) below)
 
 ## Features
 
@@ -21,7 +21,7 @@ Dispatch is a single-file web app for managing a personal work portfolio: log ta
   - **Weekly** — pick one or more days of the week; reactivates on the next occurrence of any selected day after being marked Done.
 - **Chat assistant ("Ask the Queue")** — describe how much time or energy you have, and it recommends the best-fitting active task, using the Anthropic API. Supports voice input (browser speech recognition) and optional spoken replies. Only your active (non-Hold/Parked/De-prioritized/Closed) tasks are ever sent to the API. In standalone mode with a personal API key, each message typically costs well under a cent (Haiku 4.5 pricing, compact task format) — cost scales mainly with how many active tasks you have, since the whole active list is resent each message.
 - **Undo** — a header button reverts the single most recent change (status change, edit, hold, delete, or import overwrite) for catching misclicks. Single-level only, and automatic background changes (like a Daily task auto-reactivating) don't count toward it.
-- **Cloud Sync** — optional real cross-device sync via a free [JSONBin.io](https://jsonbin.io) bin: Dispatch loads from the cloud on open, pushes on every save, and polls every 30 seconds for changes made elsewhere. Falls back to the local cached copy if the network is unavailable. See [Cloud Sync Setup](#cloud-sync-setup) below.
+- **Cloud Sync** — optional real cross-device sync via a free [JSONBin.io](https://jsonbin.io) bin: Dispatch loads from the cloud on open and pushes on every save, so anything added elsewhere (like from Quick Add) shows up the next time you open or refresh Dispatch. A **Sync Now** button in the header lets you pull in changes on demand while Dispatch is already open, without needing to reload the page. There's no automatic background polling — this keeps JSONBin's free-tier request quota from getting eaten up. Falls back to the local cached copy if the network is unavailable. See [Cloud Sync Setup](#cloud-sync-setup) below.
 - **Quick Add companion page** (`quick-add.html`) — a separate, minimal page (just a text box and a button) for adding a task from your phone without opening the full app. Writes directly to the same shared bin as Cloud Sync. Great as a home-screen bookmark. New tasks land with Medium priority, Medium difficulty, and a 30-minute estimate — easy to fine-tune later in Dispatch.
 - **Export / Import** — download your task list as a `.json` file (also copied to clipboard) and import it elsewhere. **Import fully replaces your current task list** with the imported file's contents — it does not merge — and shows a confirm-before-wipe review step (with counts) before anything is deleted.
 
@@ -64,7 +64,7 @@ To use it:
 1. Host `quick-add.html` somewhere reachable from your phone. The easiest option is **GitHub Pages** — enable it on this repo (Settings → Pages), which gives you a public URL like `https://<username>.github.io/<repo>/quick-add.html`.
 2. Open that URL on your phone and bookmark it to your home screen (in most mobile browsers: Share → Add to Home Screen) so it opens like a mini app with one tap.
 3. The first time you open it, it'll ask for the same Access Key and Bin ID you used in Dispatch's Cloud Sync setup — enter them once and it remembers them on that device.
-4. From then on: tap the icon, type a task, tap Add. It shows up in Dispatch (via Cloud Sync's ~30-second poll, or immediately the next time Dispatch is opened) with Medium priority, Medium difficulty, and a 30-minute estimate — open Dispatch to adjust any of that.
+4. From then on: tap the icon, type a task, tap Add. It shows up in Dispatch the next time you open it, refresh it, or tap **Sync Now** in the header — with Medium priority, Medium difficulty, and a 30-minute estimate, ready to adjust in Dispatch.
 
 ## How Scoring Works
 
@@ -107,6 +107,7 @@ score = (6 − priority) × 22 − difficulty × 6 − min(estMinutes, 240) / 24
 | v2.5.0 | Added Cloud Sync (JSONBin.io) for real cross-device sync, plus quick-add.html companion page for phone quick-capture |
 | v2.5.1 | Fixed Cloud Sync connection failures (correct auth header, defensive parsing, real error messages) |
 | v2.5.2 | quick-add.html now uses the same favicon as Dispatch |
+| v2.6.0 | Removed automatic 30-second Cloud Sync poll (was eating JSONBin quota); added manual "Sync Now" button |
 
 ## Notes & Limitations
 
