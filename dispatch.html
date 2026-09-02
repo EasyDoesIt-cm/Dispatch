@@ -29,6 +29,7 @@
   v2.5.1  Fixed Cloud Sync connection failures: use the correct X-Access-Key header, more defensive response parsing, and error messages now show the actual HTTP status/reason instead of a generic failure
   v2.5.2  quick-add.html now uses the same favicon as Dispatch (D mark) instead of its own + mark
   v2.6.0  Removed the automatic 30-second Cloud Sync poll (was consuming JSONBin free-tier quota fast) — Dispatch still syncs on open and on every save; added a manual "Sync Now" header button for on-demand refresh while the app is already open
+  v2.7.0  Cloud Sync push is now non-blocking and batched (3s debounce) — actions like status changes no longer wait on the network round-trip; Sync Now flushes any pending push before pulling, and pending changes attempt a best-effort flush if the tab closes mid-batch
   -- bump this on every future change, and add a line above --
 -->
 <html lang="en">
@@ -280,7 +281,7 @@
       <div class="brand-mark">D</div>
       <div>
         <h1>Dispatch</h1>
-        <div class="tag">work queue console · v2.6.0</div>
+        <div class="tag">work queue console · v2.7.0</div>
       </div>
     </div>
     <div class="stats">
@@ -693,6 +694,7 @@
     if(!cfg) return;
     const btn = document.getElementById('syncNowBtn');
     btn.disabled = true;
+    if(pendingCloudPush) await flushCloudPush();
     try{
       const remote = await cloudFetchTasks();
       if(JSON.stringify(remote) !== JSON.stringify(tasks)){
@@ -757,18 +759,33 @@
     });
     return changed;
   }
+  let cloudPushTimer = null;
+  let pendingCloudPush = false;
+
+  async function flushCloudPush(){
+    clearTimeout(cloudPushTimer);
+    if(!pendingCloudPush) return;
+    const cfg = getCloudConfig();
+    if(!cfg) { pendingCloudPush = false; return; }
+    try{
+      await cloudPushTasks(tasks);
+      pendingCloudPush = false;
+      setCloudSyncStatus('☁ synced ' + new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}), false);
+    }catch(e){
+      setCloudSyncStatus('☁ sync failed — will retry — ' + e.message, true);
+    }
+  }
+  function scheduleCloudPush(){
+    pendingCloudPush = true;
+    setCloudSyncStatus('☁ pending sync…', false);
+    clearTimeout(cloudPushTimer);
+    cloudPushTimer = setTimeout(flushCloudPush, 3000);
+  }
+
   async function saveTasks(){
     try{ await storageAdapter.set('dispatch-tasks', JSON.stringify(tasks)); }
     catch(e){ console.error('save failed', e); }
-    const cfg = getCloudConfig();
-    if(cfg){
-      try{
-        await cloudPushTasks(tasks);
-        setCloudSyncStatus('☁ synced ' + new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}), false);
-      }catch(e){
-        setCloudSyncStatus('☁ sync failed — saved locally only', true);
-      }
-    }
+    if(getCloudConfig()) scheduleCloudPush();
   }
   async function loadChat(){
     try{
@@ -1923,6 +1940,22 @@ ${taskLines}`;
   });
 
   /* ============== INIT ============== */
+  window.addEventListener('beforeunload', ()=>{
+    if(pendingCloudPush){
+      const cfg = getCloudConfig();
+      if(cfg){
+        try{
+          fetch(`https://api.jsonbin.io/v3/b/${cfg.binId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'X-Access-Key': cfg.key },
+            body: JSON.stringify({ tasks }),
+            keepalive: true
+          });
+        }catch(e){ /* best effort */ }
+      }
+    }
+  });
+
   async function init(){
     renderChips();
     updateSyncNowVisibility();
