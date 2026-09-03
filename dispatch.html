@@ -31,6 +31,7 @@
   v2.6.0  Removed the automatic 30-second Cloud Sync poll (was consuming JSONBin free-tier quota fast) — Dispatch still syncs on open and on every save; added a manual "Sync Now" header button for on-demand refresh while the app is already open
   v2.7.0  Cloud Sync push is now non-blocking and batched (3s debounce) — actions like status changes no longer wait on the network round-trip; Sync Now flushes any pending push before pulling, and pending changes attempt a best-effort flush if the tab closes mid-batch
   v2.8.0  Added "Set as Next Up" button to every active task card, to manually override Next Up while browsing (in lieu of Ask the Queue / Quick Match); quick-add.html now exposes all task fields (notes, priority, difficulty, minutes, due/daily/weekly, tags) instead of title-only
+  v2.8.1  Moved "Set as Next Up" to its own row at the bottom-left of each ticket, styled amber like "+ New Task" instead of sitting inline with the other ghost-style buttons
   -- bump this on every future change, and add a line above --
 -->
 <html lang="en">
@@ -165,10 +166,12 @@
   /* ---------- Ticket ---------- */
   .ticket{
     position:relative; background:var(--panel-2); border:1px solid var(--border); border-radius:5px;
-    padding:14px 14px 14px 20px; margin-bottom:10px; display:flex; gap:14px; align-items:flex-start;
+    padding:14px 14px 14px 20px; margin-bottom:10px; display:flex; flex-direction:column; gap:10px;
     background-image: repeating-linear-gradient(to bottom, var(--border) 0, var(--border) 4px, transparent 4px, transparent 9px);
     background-size: 1px 100%; background-repeat:no-repeat; background-position: 10px 0;
   }
+  .ticket-toprow{ display:flex; gap:14px; align-items:flex-start; }
+  .ticket-bottomrow{ display:flex; justify-content:flex-start; padding-top:10px; border-top:1px solid var(--border); }
   .ticket::before{ content:''; position:absolute; left:0; top:0; bottom:0; width:5px; border-radius:5px 0 0 5px; background:var(--pcolor); }
   .ticket.done{ opacity:0.5; }
   .ticket.done .t{ text-decoration:line-through; }
@@ -282,7 +285,7 @@
       <div class="brand-mark">D</div>
       <div>
         <h1>Dispatch</h1>
-        <div class="tag">work queue console · v2.8.0</div>
+        <div class="tag">work queue console · v2.8.1</div>
       </div>
     </div>
     <div class="stats">
@@ -922,10 +925,11 @@
     const dueInfo = (!t.daily && !t.weekly && t.dueDate) ? fmtDue(t.dueDate) : null;
     const tags = (t.tags||[]).map(tag=>`<span class="chip">${escapeHtml(tag)}</span>`).join('');
     let actions = '';
+    let nextUpBtn = '';
     if(t.status === 'active'){
+      nextUpBtn = `<button class="btn btn-primary btn-sm" onclick="Dispatch.setNextUp('${t.id}')">Set as Next Up</button>`;
       actions = `
         <button class="btn btn-sm" onclick="Dispatch.setStatus('${t.id}','done')">Done</button>
-        <button class="btn btn-sm btn-ghost" onclick="Dispatch.setNextUp('${t.id}')">Set as Next Up</button>
         <button class="btn btn-sm btn-ghost" onclick="Dispatch.openHoldModal('${t.id}')">Hold…</button>
         <button class="btn btn-sm btn-ghost" onclick="Dispatch.setStatus('${t.id}','parked')">Done for day</button>
         <button class="btn btn-sm btn-ghost" onclick="Dispatch.setStatus('${t.id}','deprioritized')">De-prioritize</button>
@@ -948,27 +952,30 @@
       : '';
     return `
     <div class="ticket ${isDone?'done':''}" style="--pcolor:${pcolor}">
-      <div class="ticket-main">
-        <div class="ticket-top">
-          <span class="tid">${tid(t)}</span>
-          <span class="t">${escapeHtml(t.title)}</span>
+      <div class="ticket-toprow">
+        <div class="ticket-main">
+          <div class="ticket-top">
+            <span class="tid">${tid(t)}</span>
+            <span class="t">${escapeHtml(t.title)}</span>
+          </div>
+          ${t.notes ? `<div class="notes">${escapeHtml(t.notes)}</div>` : ''}
+          <div class="ticket-meta">
+            <span class="chip">${priorityName(t.priority)}</span>
+            <span class="chip">difficulty ${t.difficulty}</span>
+            <span class="chip">${fmtMinutes(Number(t.estMinutes||0))}</span>
+            ${dueInfo ? `<span class="chip ${dueInfo.cls}">${dueInfo.label}</span>` : ''}
+            ${t.daily ? `<span class="chip daily">Daily</span>` : ''}
+            ${t.weekly ? `<span class="chip daily">Weekly · ${weeklyDaysOf(t).map(d=>WEEKDAY_NAMES[d]).join(', ')}</span>` : ''}
+            ${holdChip}
+            ${tags}
+          </div>
         </div>
-        ${t.notes ? `<div class="notes">${escapeHtml(t.notes)}</div>` : ''}
-        <div class="ticket-meta">
-          <span class="chip">${priorityName(t.priority)}</span>
-          <span class="chip">difficulty ${t.difficulty}</span>
-          <span class="chip">${fmtMinutes(Number(t.estMinutes||0))}</span>
-          ${dueInfo ? `<span class="chip ${dueInfo.cls}">${dueInfo.label}</span>` : ''}
-          ${t.daily ? `<span class="chip daily">Daily</span>` : ''}
-          ${t.weekly ? `<span class="chip daily">Weekly · ${weeklyDaysOf(t).map(d=>WEEKDAY_NAMES[d]).join(', ')}</span>` : ''}
-          ${holdChip}
-          ${tags}
+        <div class="ticket-actions">
+          <div class="score-badge" style="--pcolor:${pcolor}">${score}</div>
+          ${actions}
         </div>
       </div>
-      <div class="ticket-actions">
-        <div class="score-badge" style="--pcolor:${pcolor}">${score}</div>
-        ${actions}
-      </div>
+      ${nextUpBtn ? `<div class="ticket-bottomrow">${nextUpBtn}</div>` : ''}
     </div>`;
   }
 

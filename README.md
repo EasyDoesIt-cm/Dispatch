@@ -2,7 +2,7 @@
 
 Dispatch is a single-file web app for managing a personal work portfolio: log tasks with priority, difficulty, and time estimates, and let the app suggest what to work on next based on a scoring system — or just ask it in plain language.
 
-**Current version: v2.8.0** (shown in the app header; see [Version History](#version-history) below)
+**Current version: v2.8.1** (shown in the app header; see [Version History](#version-history) below)
 
 ## Features
 
@@ -112,6 +112,7 @@ score = (6 − priority) × 22 − difficulty × 6 − min(estMinutes, 240) / 24
 | v2.6.0 | Removed automatic 30-second Cloud Sync poll (was eating JSONBin quota); added manual "Sync Now" button |
 | v2.7.0 | Cloud Sync push is now non-blocking and batched (3s debounce) instead of blocking the UI on every action |
 | v2.8.0 | Added "Set as Next Up" button to task cards; quick-add.html now exposes all task fields instead of title-only |
+| v2.8.1 | "Set as Next Up" moved to its own bottom-left row, styled amber like "+ New Task" |
 
 ## Notes & Limitations
 
