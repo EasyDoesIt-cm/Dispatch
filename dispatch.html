@@ -32,6 +32,7 @@
   v2.7.0  Cloud Sync push is now non-blocking and batched (3s debounce) — actions like status changes no longer wait on the network round-trip; Sync Now flushes any pending push before pulling, and pending changes attempt a best-effort flush if the tab closes mid-batch
   v2.8.0  Added "Set as Next Up" button to every active task card, to manually override Next Up while browsing (in lieu of Ask the Queue / Quick Match); quick-add.html now exposes all task fields (notes, priority, difficulty, minutes, due/daily/weekly, tags) instead of title-only
   v2.8.1  Moved "Set as Next Up" to its own row at the bottom-left of each ticket, styled amber like "+ New Task" instead of sitting inline with the other ghost-style buttons
+  v2.9.0  Fixed a real data-loss bug: Cloud Sync push was a blind overwrite of the whole bin, so a stale/long-idle session could silently erase tasks added elsewhere (e.g. phone quick-adds). Every push now does fetch-merge-push instead: tasks are stamped with updatedAt on every change, and merging keeps whichever copy of each task is newer rather than blindly replacing. Known remaining limitation: a deletion on one device can still be "resurrected" by a stale session's merge, since there's no tombstone tracking yet
   -- bump this on every future change, and add a line above --
 -->
 <html lang="en">
@@ -285,7 +286,7 @@
       <div class="brand-mark">D</div>
       <div>
         <h1>Dispatch</h1>
-        <div class="tag">work queue console · v2.8.1</div>
+        <div class="tag">work queue console · v2.9.0</div>
       </div>
     </div>
     <div class="stats">
@@ -698,15 +699,19 @@
     if(!cfg) return;
     const btn = document.getElementById('syncNowBtn');
     btn.disabled = true;
-    if(pendingCloudPush) await flushCloudPush();
     try{
-      const remote = await cloudFetchTasks();
-      if(JSON.stringify(remote) !== JSON.stringify(tasks)){
-        tasks = remote;
-        await storageAdapter.set('dispatch-tasks', JSON.stringify(tasks));
-        render();
+      if(pendingCloudPush){
+        await flushCloudPush();
+      } else {
+        const remote = await cloudFetchTasks();
+        const merged = mergeTaskArrays(remote, tasks);
+        if(JSON.stringify(merged) !== JSON.stringify(tasks)){
+          tasks = merged;
+          await storageAdapter.set('dispatch-tasks', JSON.stringify(tasks));
+          render();
+        }
+        setCloudSyncStatus('☁ synced ' + new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}), false);
       }
-      setCloudSyncStatus('☁ synced ' + new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}), false);
     }catch(e){
       setCloudSyncStatus('☁ sync failed — ' + e.message, true);
     }
@@ -743,21 +748,21 @@
     const now = new Date();
     tasks.forEach(t=>{
       if(t.status === 'parked' && t.parkedUntil && t.parkedUntil <= tk){
-        t.status = 'active'; delete t.parkedUntil; changed = true;
+        t.status = 'active'; delete t.parkedUntil; touch(t); changed = true;
       }
       if(t.status === 'onhold' && t.holdUntil && new Date(t.holdUntil) <= now){
-        t.status = 'active'; delete t.holdUntil; changed = true;
+        t.status = 'active'; delete t.holdUntil; touch(t); changed = true;
       }
       if(t.status === 'onhold' && t.holdUntilDay && tk >= t.holdUntilDay){
-        t.status = 'active'; delete t.holdUntilDay; changed = true;
+        t.status = 'active'; delete t.holdUntilDay; touch(t); changed = true;
       }
       if(t.status === 'done' && t.daily && t.closedOn && t.closedOn < tk){
-        t.status = 'active'; delete t.closedOn; changed = true;
+        t.status = 'active'; delete t.closedOn; touch(t); changed = true;
       }
       if(t.status === 'done' && t.weekly && t.closedOn){
         const earliest = weeklyDaysOf(t).map(d => nextWeekdayAfter(t.closedOn, d)).sort()[0];
         if(tk >= earliest){
-          t.status = 'active'; delete t.closedOn; changed = true;
+          t.status = 'active'; delete t.closedOn; touch(t); changed = true;
         }
       }
     });
@@ -766,12 +771,36 @@
   let cloudPushTimer = null;
   let pendingCloudPush = false;
 
+  function mergeTaskArrays(remote, local){
+    const map = new Map();
+    (remote||[]).forEach(t => map.set(t.id, t));
+    (local||[]).forEach(t => {
+      const r = map.get(t.id);
+      if(!r){
+        map.set(t.id, t);
+      } else {
+        const rTime = r.updatedAt || r.createdAt || '';
+        const lTime = t.updatedAt || t.createdAt || '';
+        map.set(t.id, lTime >= rTime ? t : r);
+      }
+    });
+    return Array.from(map.values());
+  }
+
   async function flushCloudPush(){
     clearTimeout(cloudPushTimer);
     if(!pendingCloudPush) return;
     const cfg = getCloudConfig();
     if(!cfg) { pendingCloudPush = false; return; }
     try{
+      const remote = await cloudFetchTasks();
+      const merged = mergeTaskArrays(remote, tasks);
+      const changed = JSON.stringify(merged) !== JSON.stringify(tasks);
+      tasks = merged;
+      if(changed){
+        await storageAdapter.set('dispatch-tasks', JSON.stringify(tasks));
+        render();
+      }
       await cloudPushTasks(tasks);
       pendingCloudPush = false;
       setCloudSyncStatus('☁ synced ' + new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}), false);
@@ -812,6 +841,11 @@
   }
 
   /* ============== SCORING ============== */
+  function touch(t){
+    t.updatedAt = new Date().toISOString();
+    return t;
+  }
+
   function computeScore(t){
     let score = (6 - t.priority) * 22 - t.difficulty * 6 - Math.min(t.estMinutes,240)/240*20;
     if(t.daily || t.weekly){
@@ -1212,6 +1246,7 @@
     }
     if(status === 'done'){ t.closedOn = todayKey(); }
     if(status === 'active'){ delete t.parkedUntil; delete t.closedOn; }
+    touch(t);
     if(lastSuggestedId === id && status !== 'active') lastSuggestedId = null;
     await saveTasks();
     render();
@@ -1330,6 +1365,7 @@
     t.status = 'onhold';
     t.holdUntil = untilIso;
     delete t.holdUntilDay;
+    touch(t);
     if(lastSuggestedId === id) lastSuggestedId = null;
     await saveTasks();
     closeHoldModal();
@@ -1344,6 +1380,7 @@
     t.status = 'onhold';
     t.holdUntilDay = dateStr;
     delete t.holdUntil;
+    touch(t);
     if(lastSuggestedId === id) lastSuggestedId = null;
     await saveTasks();
     closeHoldModal();
@@ -1593,17 +1630,17 @@
     }
     if(bumpConflictId){
       const conflictTask = tasks.find(t => t.id === bumpConflictId);
-      if(conflictTask) conflictTask.priority = 2;
+      if(conflictTask) touch(conflictTask).priority = 2;
     }
     if(id){
       const t = tasks.find(x=>x.id===id);
-      Object.assign(t, data);
+      touch(Object.assign(t, data));
     } else {
-      tasks.push(Object.assign({
+      tasks.push(touch(Object.assign({
         id: 'id-'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),
         status:'active',
         createdAt: new Date().toISOString()
-      }, data));
+      }, data)));
     }
     await saveTasks();
     closeModal();

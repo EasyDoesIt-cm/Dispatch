@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<!-- DISPATCH QUICK ADD — companion page, v2.0.0. Adds one task to the shared Dispatch cloud bin. -->
+<!-- DISPATCH QUICK ADD — companion page, v2.0.1. Adds one task to the shared Dispatch cloud bin. -->
+<!-- v2.0.1: new tasks now stamp updatedAt, for consistency with Dispatch's fetch-merge-push sync logic -->
 <!-- v2.0.0: exposes all task fields (notes, priority, difficulty, minutes, due/daily/weekly, tags) instead of title-only -->
 <!-- v1.1.0: favicon now matches Dispatch's icon (D mark) instead of the + mark -->
 <html lang="en">
@@ -412,7 +413,7 @@
         dueDate: document.getElementById('fDue').value || null,
         daily, weekly,
         weeklyDays: getWeeklyDaysValue().length ? getWeeklyDaysValue() : [new Date().getDay()],
-        tags, status: 'active', createdAt: new Date().toISOString()
+        tags, status: 'active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
       };
       current.push(newTask);
       await pushTasks(cfg, current);
