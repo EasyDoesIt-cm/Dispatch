@@ -2,6 +2,8 @@
 
 Dispatch is a single-file web app for managing a personal work portfolio: log tasks with priority, difficulty, and time estimates, and let the app suggest what to work on next based on a scoring system — or just ask it in plain language.
 
+First and foremost, Dispatch is a focus aid to help re-center yourself when there are too many tasks demanding your attention or you are distracted and need to get back on track. It is designed to meet you where you are in the moment, not demand your best at all times. It is meant to be a starting point from which you can create your own flavor of solution to track and deliver your work the way that works best for your brain.
+
 **Current version: v2.9.0** (shown in the app header; see [Version History](#version-history) below)
 
 ## Features
