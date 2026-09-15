@@ -6,7 +6,7 @@ Dispatch is a single-file web app for managing a personal work portfolio: log ta
 
 It's a single HTML file on purpose — fork it, gut what doesn't help, build on what does. There's no "correct" way to use Dispatch; if a rule or feature here fights how your brain actually works, change it.
 
-**Current version: v2.9.0** (shown in the app header; see [Version History](#version-history) below)
+**Current version: v3.0.0** (shown in the app header; see [Version History](#version-history) below)
 
 ## Features
 
@@ -19,7 +19,7 @@ It's a single HTML file on purpose — fork it, gut what doesn't help, build on 
 - **Status actions**:
   - **Done** — closes the task (can be manually reactivated later from the Closed section if needed).
   - **Done for Day** — removes it from today's queue; it reactivates automatically the next calendar day.
-  - **Hold…** — set it aside for a quick duration (1 hr / 4 hr), a chosen number of Days or Weeks, or a specific calendar day; it reactivates automatically once the hold expires.
+  - **Hold…** — set it aside for a quick duration (1 hr / 4 hr), a chosen number of Days or Weeks, or a specific calendar day; it reactivates automatically once the hold expires. You can also start a task on hold right from the New Task / Edit Task form (and from Quick Add) using the same options, instead of creating it active and holding it separately afterward.
   - **De-prioritize** — sets it aside indefinitely until manually reactivated.
 - **Recurring tasks**:
   - **Daily** — reactivates the next day after being marked Done.
@@ -27,7 +27,7 @@ It's a single HTML file on purpose — fork it, gut what doesn't help, build on 
 - **Chat assistant ("Ask the Queue")** — describe how much time or energy you have, and it recommends the best-fitting active task, using the Anthropic API. Supports voice input (browser speech recognition) and optional spoken replies. Only your active (non-Hold/Parked/De-prioritized/Closed) tasks are ever sent to the API. In standalone mode with a personal API key, each message typically costs well under a cent (Haiku 4.5 pricing, compact task format) — cost scales mainly with how many active tasks you have, since the whole active list is resent each message.
 - **Undo** — a header button reverts the single most recent change (status change, edit, hold, delete, or import overwrite) for catching misclicks. Single-level only, and automatic background changes (like a Daily task auto-reactivating) don't count toward it.
 - **Cloud Sync** — optional real cross-device sync via a free [JSONBin.io](https://jsonbin.io) bin: Dispatch loads from the cloud on open and pushes on every save, so anything added elsewhere (like from Quick Add) shows up the next time you open or refresh Dispatch. Pushes do a **fetch-merge-push** — every task is stamped with an `updatedAt` timestamp, and syncing keeps whichever copy of each task is newer rather than blindly overwriting the whole bin, so a stale or long-idle session can't silently erase tasks added elsewhere. Pushes are also batched (3-second debounce), so the UI never waits on the network. A **Sync Now** button in the header lets you pull in changes on demand. Falls back to the local cached copy if the network is unavailable. **Known limitation:** deleting a task on one device can still be "resurrected" by a stale session's merge, since there's no tracking yet of intentional deletions — this is a rarer and less damaging edge case than the overwrite bug the merge logic fixes, but worth knowing about. **Note:** Cloud Sync only works in the standalone version of Dispatch (downloaded file or hosted copy) — Claude's own artifact sandbox blocks outbound requests to third-party APIs like JSONBin, the same restriction that blocks microphone access there. See [Cloud Sync Setup](#cloud-sync-setup) below.
-- **Quick Add companion page** (`quick-add.html`) — a separate page for adding a task from your phone without opening the full app. Exposes the same fields you'd see adding a task in Dispatch — title, notes, priority, difficulty, minutes, due date/Daily/Weekly, tags — defaulting to Medium priority, Medium difficulty, and 30 minutes if you don't touch them. Writes directly to the same shared bin as Cloud Sync. Great as a home-screen bookmark.
+- **Quick Add companion page** (`quick-add.html`) — a separate page for adding a task from your phone without opening the full app. Exposes the same fields you'd see adding a task in Dispatch — title, notes, priority, difficulty, minutes, due date/Daily/Weekly, tags, and Start on Hold — defaulting to Medium priority, Medium difficulty, and 30 minutes if you don't touch them. Writes directly to the same shared bin as Cloud Sync. Great as a home-screen bookmark.
 - **Export / Import** — download your task list as a `.json` file (also copied to clipboard) and import it elsewhere. **Import fully replaces your current task list** with the imported file's contents — it does not merge — and shows a confirm-before-wipe review step (with counts) before anything is deleted.
 
 ## Getting Started
@@ -118,6 +118,7 @@ score = (6 − priority) × 22 − difficulty × 6 − min(estMinutes, 240) / 24
 | v2.8.0 | Added "Set as Next Up" button to task cards; quick-add.html now exposes all task fields instead of title-only |
 | v2.8.1 | "Set as Next Up" moved to its own bottom-left row, styled amber like "+ New Task" |
 | v2.9.0 | Fixed data-loss bug: Cloud Sync now does fetch-merge-push instead of blindly overwriting the bin, so a stale session can't erase tasks added elsewhere |
+| v3.0.0 | Added "Start this task on hold" to task creation/editing and to quick-add.html, matching the standalone Hold options |
 
 ## Notes & Limitations
 

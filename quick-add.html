@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<!-- DISPATCH QUICK ADD — companion page, v2.0.1. Adds one task to the shared Dispatch cloud bin. -->
+<!-- DISPATCH QUICK ADD — companion page, v2.1.0. Adds one task to the shared Dispatch cloud bin. -->
+<!-- v2.1.0: added "Start this task on hold" option matching Dispatch's Hold controls (1hr/4hr, Days/Weeks stepper, specific day) -->
 <!-- v2.0.1: new tasks now stamp updatedAt, for consistency with Dispatch's fetch-merge-push sync logic -->
 <!-- v2.0.0: exposes all task fields (notes, priority, difficulty, minutes, due/daily/weekly, tags) instead of title-only -->
 <!-- v1.1.0: favicon now matches Dispatch's icon (D mark) instead of the + mark -->
@@ -57,6 +58,17 @@
   .weekday-picker{ display:flex; gap:5px; margin-top:8px; }
   .weekday-btn{ flex:1; background:var(--panel2); border:1px solid var(--border); border-radius:5px; padding:9px 0; font-size:11.5px; font-weight:700; color:var(--dim); text-align:center; }
   .weekday-btn.selected{ background:rgba(78,158,151,0.18); border-color:var(--teal); color:var(--teal); }
+  .checkbox-label{ display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text); cursor:pointer; }
+  .checkbox-label input{ width:auto; accent-color:var(--teal); }
+  .or-divider{ display:flex; align-items:center; gap:8px; color:var(--faint); font-size:10px; text-transform:uppercase; letter-spacing:0.06em; margin:10px 0; }
+  .or-divider::before, .or-divider::after{ content:''; flex:1; height:1px; background:var(--border); }
+  .hold-quick-btn{ background:var(--panel2); border:1px solid var(--border); color:var(--text); padding:9px; border-radius:5px; font-size:12px; text-align:center; }
+  .hold-quick-btn.active{ background:var(--teal); border-color:var(--teal); color:#0d1a19; font-weight:700; }
+  .hold-unit-btn{ flex:1; background:var(--panel2); border:1px solid var(--border); color:var(--faint); padding:7px; border-radius:5px; font-size:11.5px; font-weight:600; text-align:center; }
+  .hold-unit-btn.selected{ background:rgba(78,158,151,0.18); border-color:var(--teal); color:var(--teal); font-weight:700; }
+  .hold-stepper{ display:flex; align-items:center; justify-content:center; gap:14px; background:var(--panel2); border:1px solid var(--border); border-radius:6px; padding:8px; margin-bottom:12px; }
+  .hold-stepper button{ width:24px; height:24px; background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:5px; font-size:14px; }
+  .hold-summary{ display:none; background:rgba(226,166,59,0.08); border:1px solid rgba(226,166,59,0.35); border-radius:5px; padding:9px 11px; font-size:12px; color:var(--amber); margin-bottom:4px; }
   .row2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
   .brand{ display:flex; align-items:center; gap:10px; margin-bottom:22px; }
   .brand-mark{ width:32px; height:32px; border-radius:6px; background:linear-gradient(135deg,var(--amber),var(--red)); display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace; font-weight:700; color:#12161B; font-size:17px; }
@@ -180,6 +192,31 @@
       <input type="text" class="tags-input" id="fTags" placeholder="comma, separated">
     </div>
 
+    <div style="border-top:1px solid var(--border); padding-top:14px; margin-top:2px; margin-bottom:16px;">
+      <label class="checkbox-label" style="margin-bottom:14px; font-weight:600;"><input type="checkbox" id="fStartOnHold"> Start this task on hold</label>
+      <input type="hidden" id="fHoldMethod" value="">
+      <div id="startHoldOptions" style="display:none;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:4px;">
+          <button type="button" class="hold-quick-btn" id="taskHold60Btn">1 hour</button>
+          <button type="button" class="hold-quick-btn" id="taskHold240Btn">4 hours</button>
+        </div>
+        <div class="or-divider">hold for a stretch</div>
+        <div style="display:flex; gap:6px; margin-bottom:10px;">
+          <button type="button" class="hold-unit-btn selected" id="taskHoldUnitDaysBtn">Days</button>
+          <button type="button" class="hold-unit-btn" id="taskHoldUnitWeeksBtn">Weeks</button>
+        </div>
+        <div class="hold-stepper">
+          <button type="button" id="taskHoldStepDown">−</button>
+          <span style="font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:700; color:var(--amber);" id="taskHoldStepValue">2</span>
+          <button type="button" id="taskHoldStepUp">+</button>
+          <span style="font-size:11px; color:var(--dim);" id="taskHoldStepUnitLabel">days</span>
+        </div>
+        <div class="or-divider">or pick a specific day</div>
+        <div class="field"><input type="date" class="date-input" id="taskHoldSpecificDay"></div>
+        <div class="hold-summary" id="taskHoldSummary"></div>
+      </div>
+    </div>
+
     <button class="add-btn" id="addBtn" type="button">Add Task</button>
     <div class="reconfig"><a id="reconfigLink">Reconnect to a different bin</a></div>
   </div>
@@ -272,6 +309,122 @@
   });
 
   document.getElementById('reconfigLink').addEventListener('click', showSetup);
+
+  /* ---- Start on hold ---- */
+  let taskHoldStepperUnit = 'days';
+  let taskHoldStepperValue = 2;
+  const taskHoldStepperBounds = { days: [1,6], weeks: [1,4] };
+
+  function updateTaskHoldStepperUI(){
+    document.getElementById('taskHoldUnitDaysBtn').classList.toggle('selected', taskHoldStepperUnit === 'days');
+    document.getElementById('taskHoldUnitWeeksBtn').classList.toggle('selected', taskHoldStepperUnit === 'weeks');
+    document.getElementById('taskHoldStepValue').textContent = taskHoldStepperValue;
+    document.getElementById('taskHoldStepUnitLabel').textContent = taskHoldStepperUnit;
+  }
+  function updateTaskHoldSummary(){
+    const method = document.getElementById('fHoldMethod').value;
+    const el = document.getElementById('taskHoldSummary');
+    if(!method){ el.style.display = 'none'; return; }
+    let text = '';
+    if(method === 'quick60') text = 'Will be added on hold, resuming in 1 hour';
+    else if(method === 'quick240') text = 'Will be added on hold, resuming in 4 hours';
+    else if(method === 'stretch') text = `Will be added on hold, resuming in ${taskHoldStepperValue} ${taskHoldStepperUnit}`;
+    else if(method === 'specific'){
+      const val = document.getElementById('taskHoldSpecificDay').value;
+      text = val ? `Will be added on hold, resuming ${val}` : 'Pick a day to resume';
+    }
+    el.textContent = text;
+    el.style.display = 'block';
+  }
+  function localDateKey(d){
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  }
+  function resolveTaskHoldFields(){
+    const method = document.getElementById('fHoldMethod').value;
+    if(method === 'quick60') return { status:'onhold', holdUntil: new Date(Date.now()+60*60000).toISOString(), holdUntilDay: null };
+    if(method === 'quick240') return { status:'onhold', holdUntil: new Date(Date.now()+240*60000).toISOString(), holdUntilDay: null };
+    if(method === 'stretch'){
+      const days = taskHoldStepperUnit === 'weeks' ? taskHoldStepperValue * 7 : taskHoldStepperValue;
+      const d = new Date(); d.setDate(d.getDate() + days);
+      return { status:'onhold', holdUntil: null, holdUntilDay: localDateKey(d) };
+    }
+    if(method === 'specific'){
+      const val = document.getElementById('taskHoldSpecificDay').value;
+      if(!val) return null;
+      return { status:'onhold', holdUntil: null, holdUntilDay: val };
+    }
+    return null;
+  }
+  function resetHoldSection(){
+    document.getElementById('fStartOnHold').checked = false;
+    document.getElementById('startHoldOptions').style.display = 'none';
+    document.getElementById('fHoldMethod').value = '';
+    document.getElementById('taskHoldSpecificDay').value = '';
+    taskHoldStepperUnit = 'days';
+    taskHoldStepperValue = 2;
+    document.getElementById('taskHold60Btn').classList.remove('active');
+    document.getElementById('taskHold240Btn').classList.remove('active');
+    updateTaskHoldStepperUI();
+    updateTaskHoldSummary();
+  }
+  document.getElementById('fStartOnHold').addEventListener('change', e=>{
+    document.getElementById('startHoldOptions').style.display = e.target.checked ? 'block' : 'none';
+  });
+  document.getElementById('taskHold60Btn').addEventListener('click', ()=>{
+    document.getElementById('fHoldMethod').value = 'quick60';
+    document.getElementById('taskHold60Btn').classList.add('active');
+    document.getElementById('taskHold240Btn').classList.remove('active');
+    updateTaskHoldSummary();
+  });
+  document.getElementById('taskHold240Btn').addEventListener('click', ()=>{
+    document.getElementById('fHoldMethod').value = 'quick240';
+    document.getElementById('taskHold240Btn').classList.add('active');
+    document.getElementById('taskHold60Btn').classList.remove('active');
+    updateTaskHoldSummary();
+  });
+  document.getElementById('taskHoldUnitDaysBtn').addEventListener('click', ()=>{
+    taskHoldStepperUnit = 'days';
+    const [min,max] = taskHoldStepperBounds.days;
+    taskHoldStepperValue = Math.min(Math.max(taskHoldStepperValue, min), max);
+    document.getElementById('fHoldMethod').value = 'stretch';
+    document.getElementById('taskHold60Btn').classList.remove('active');
+    document.getElementById('taskHold240Btn').classList.remove('active');
+    updateTaskHoldStepperUI();
+    updateTaskHoldSummary();
+  });
+  document.getElementById('taskHoldUnitWeeksBtn').addEventListener('click', ()=>{
+    taskHoldStepperUnit = 'weeks';
+    const [min,max] = taskHoldStepperBounds.weeks;
+    taskHoldStepperValue = Math.min(Math.max(taskHoldStepperValue, min), max);
+    document.getElementById('fHoldMethod').value = 'stretch';
+    document.getElementById('taskHold60Btn').classList.remove('active');
+    document.getElementById('taskHold240Btn').classList.remove('active');
+    updateTaskHoldStepperUI();
+    updateTaskHoldSummary();
+  });
+  document.getElementById('taskHoldStepDown').addEventListener('click', ()=>{
+    const [min] = taskHoldStepperBounds[taskHoldStepperUnit];
+    if(taskHoldStepperValue > min) taskHoldStepperValue--;
+    document.getElementById('fHoldMethod').value = 'stretch';
+    updateTaskHoldStepperUI();
+    updateTaskHoldSummary();
+  });
+  document.getElementById('taskHoldStepUp').addEventListener('click', ()=>{
+    const [,max] = taskHoldStepperBounds[taskHoldStepperUnit];
+    if(taskHoldStepperValue < max) taskHoldStepperValue++;
+    document.getElementById('fHoldMethod').value = 'stretch';
+    updateTaskHoldStepperUI();
+    updateTaskHoldSummary();
+  });
+  document.getElementById('taskHoldSpecificDay').addEventListener('change', ()=>{
+    document.getElementById('fHoldMethod').value = 'specific';
+    document.getElementById('taskHold60Btn').classList.remove('active');
+    document.getElementById('taskHold240Btn').classList.remove('active');
+    updateTaskHoldSummary();
+  });
 
   /* ---- Priority pills ---- */
   function setPriority(p){
@@ -379,6 +532,7 @@
     setWeeklyDaysValue([new Date().getDay()]);
     updateDueVisibility();
     document.getElementById('fTags').value = '';
+    resetHoldSection();
   }
   resetForm();
 
@@ -415,6 +569,14 @@
         weeklyDays: getWeeklyDaysValue().length ? getWeeklyDaysValue() : [new Date().getDay()],
         tags, status: 'active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
       };
+      if(document.getElementById('fStartOnHold').checked){
+        let holdFields = resolveTaskHoldFields();
+        if(!holdFields){
+          const d = new Date(); d.setDate(d.getDate()+2);
+          holdFields = { status:'onhold', holdUntil: null, holdUntilDay: localDateKey(d) };
+        }
+        Object.assign(newTask, holdFields);
+      }
       current.push(newTask);
       await pushTasks(cfg, current);
       resetForm();
