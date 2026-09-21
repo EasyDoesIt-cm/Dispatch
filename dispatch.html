@@ -34,6 +34,16 @@
   v2.8.1  Moved "Set as Next Up" to its own row at the bottom-left of each ticket, styled amber like "+ New Task" instead of sitting inline with the other ghost-style buttons
   v2.9.0  Fixed a real data-loss bug: Cloud Sync push was a blind overwrite of the whole bin, so a stale/long-idle session could silently erase tasks added elsewhere (e.g. phone quick-adds). Every push now does fetch-merge-push instead: tasks are stamped with updatedAt on every change, and merging keeps whichever copy of each task is newer rather than blindly replacing. Known remaining limitation: a deletion on one device can still be "resurrected" by a stale session's merge, since there's no tombstone tracking yet
   v3.0.0  Added "Start this task on hold" to the task creation/edit modal and to quick-add.html — same options as the standalone Hold action (1hr/4hr quick buttons, Days/Weeks stretch stepper, specific day), with a live summary of the resolved resume time before saving
+  v3.1.0  Merged "Aperture" back in as a mode within Dispatch, rather than a separate forked app — a
+          Dispatch/Aperture pill toggle sits in the header (tagline and layout follow the active mode).
+          Dispatch mode is unchanged: Quick Match + Ask the Queue, auto-suggested Next Up. Aperture mode
+          swaps that side panel for a Session Builder (drag-to-reorder, "+ Add to Session" on tickets,
+          "Add All" by score) and a decoupled Focus Timer: the work/break metronome runs independently
+          of task completion, while Next Up advances the moment the current task leaves active status
+          (Done/Hold/Parked), regardless of timer phase. The toggle locks during an active session (via
+          native button disabled state — can't be triggered mid-session) to avoid orphaning session
+          state. Both modes share one task list, one Cloud Sync bin, one everything else. The standalone
+          Aperture app/fork is retired as of this version — it exists only as a mode here going forward.
   -- bump this on every future change, and add a line above --
 -->
 <html lang="en">
@@ -86,6 +96,10 @@
   .header{ display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:22px; flex-wrap:wrap; border-bottom:1px solid var(--border); padding-bottom:18px;}
   .brand{ display:flex; align-items:center; gap:12px; }
   .brand-mark{ width:34px; height:34px; border-radius:6px; background:linear-gradient(135deg, var(--amber), var(--red)); display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace; font-weight:700; color:#12161B; font-size:15px;}
+  .mode-toggle{ display:flex; background:var(--panel-2); border:1px solid var(--border); border-radius:20px; padding:3px; gap:2px; align-self:center; }
+  .mode-toggle-btn{ background:transparent; border:none; color:var(--text-faint); font-size:12px; font-weight:600; padding:6px 16px; border-radius:16px; transition:all .15s; }
+  .mode-toggle-btn.selected{ background:var(--amber); color:#171310; }
+  .mode-toggle-btn:disabled{ opacity:0.5; cursor:not-allowed; }
   .brand h1{ font-size:19px; letter-spacing:0.06em; font-weight:800; text-transform:uppercase;}
   .brand .tag{ font-size:11px; color:var(--text-dim); font-family:'JetBrains Mono',monospace; letter-spacing:0.04em;}
   .stats{ display:flex; gap:22px; }
@@ -173,7 +187,7 @@
     background-size: 1px 100%; background-repeat:no-repeat; background-position: 10px 0;
   }
   .ticket-toprow{ display:flex; gap:14px; align-items:flex-start; }
-  .ticket-bottomrow{ display:flex; justify-content:flex-start; padding-top:10px; border-top:1px solid var(--border); }
+  .ticket-bottomrow{ display:flex; justify-content:flex-start; gap:8px; padding-top:10px; border-top:1px solid var(--border); }
   .ticket::before{ content:''; position:absolute; left:0; top:0; bottom:0; width:5px; border-radius:5px 0 0 5px; background:var(--pcolor); }
   .ticket.done{ opacity:0.5; }
   .ticket.done .t{ text-decoration:line-through; }
@@ -278,6 +292,12 @@
   .or-divider::before, .or-divider::after{ content:''; flex:1; height:1px; background:var(--border); }
 
   .fab{ position:fixed; bottom:26px; right:26px; width:52px; height:52px; border-radius:50%; background:var(--amber); color:#171310; font-size:26px; display:flex; align-items:center; justify-content:center; border:none; box-shadow:0 6px 18px rgba(0,0,0,0.4); z-index:10; }
+  .toast{ background:var(--panel-2); border:1px solid var(--border); color:var(--text); font-size:12.5px; padding:9px 16px; border-radius:20px; box-shadow:0 4px 14px rgba(0,0,0,0.4); opacity:0; transform:translateY(8px); transition:opacity .25s ease, transform .25s ease; }
+  .toast.show{ opacity:1; transform:translateY(0); }
+  .focus-preset-btn{ background:var(--panel-2); border:1px solid var(--border); border-radius:6px; padding:10px 6px; display:flex; flex-direction:column; align-items:center; gap:2px; transition:all .12s; }
+  .focus-preset-btn:hover{ border-color:var(--amber); background:rgba(226,166,59,0.08); }
+  .focus-preset-btn .fp-time{ font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:700; color:var(--amber); }
+  .focus-preset-btn .fp-label{ font-size:10px; color:var(--text-dim); }
   .fab:hover{ background:#f0b455; }
 </style>
 </head>
@@ -289,8 +309,12 @@
       <div class="brand-mark">D</div>
       <div>
         <h1>Dispatch</h1>
-        <div class="tag">work queue console · v3.0.0</div>
+        <div class="tag" id="appTagline">work queue console · v3.1.0</div>
       </div>
+    </div>
+    <div class="mode-toggle" id="modeToggle">
+      <button type="button" class="mode-toggle-btn selected" id="modeDispatchBtn" data-mode="dispatch">Dispatch</button>
+      <button type="button" class="mode-toggle-btn" id="modeApertureBtn" data-mode="aperture">Aperture</button>
     </div>
     <div class="stats">
       <div class="stat"><div class="n" id="statCount">0</div><div class="l">in queue</div></div>
@@ -309,9 +333,17 @@
     <div class="panel nextup" id="nextUpPanel">
       <div class="panel-title"><h2>Next Up</h2><div style="display:flex;align-items:center;gap:10px;"><span id="nuSavedIndicator" class="nu-saved">Saved</span><button class="btn btn-sm" id="rerollBtn">Reroll</button></div></div>
       <div id="nextUpBody"><div class="nextup-empty">Queue is empty. Log a task to get a recommendation.</div></div>
+      <div id="focusTimerRow" style="display:none; align-items:center; justify-content:space-between; background:var(--panel-2); border:1px solid var(--border); border-radius:6px; padding:12px 16px; margin-top:14px;">
+        <div>
+          <div id="focusPhaseLabel" style="font-size:10px; text-transform:uppercase; color:var(--text-faint); letter-spacing:0.05em;">Focus session</div>
+          <div id="focusTimeLeft" class="mono" style="font-size:24px; font-weight:700; color:var(--amber);">25:00</div>
+        </div>
+        <button id="endFocusBtn" style="background:transparent; border:none; color:var(--text-faint); font-size:11px; text-decoration:underline; cursor:pointer;">End Timer</button>
+      </div>
+      <div id="sessionCompleteMsg" style="display:none; margin-top:14px; background:rgba(226,166,59,0.08); border:1px solid rgba(226,166,59,0.35); border-radius:6px; padding:10px 12px; font-size:12.5px; color:var(--amber);">Session complete.</div>
     </div>
 
-    <div class="panel">
+    <div class="panel" id="quickMatchPanel">
       <div class="panel-title"><h2>Quick Match</h2><span class="mono" style="font-size:10px;color:var(--text-faint);">no API — instant</span></div>
       <div class="quadrant-grid">
         <button class="quadrant-btn quad-1" id="quadBtn1" data-q="1">
@@ -328,9 +360,21 @@
         </button>
       </div>
     </div>
+
+    <div class="panel" id="sessionBuilderPanel" style="display:none;">
+      <div class="panel-title"><h2>Session Builder</h2><span class="mono" style="font-size:10px;color:var(--text-faint);" id="sessionCount"></span></div>
+      <div id="sessionList"></div>
+      <div id="sessionEmptyMsg" class="empty" style="font-size:12px; padding:16px 10px;">Use "+ Add to Session" on a task below to start building a sequence, or add everything at once, sorted by score.</div>
+      <button class="btn btn-sm" id="sessionAddAllBtn" style="width:100%; margin-top:10px;">+ Add All (highest score first)</button>
+      <div style="border-top:1px solid var(--border); padding-top:14px; margin-top:14px;">
+        <div style="font-size:10px; text-transform:uppercase; color:var(--text-faint); letter-spacing:0.05em; margin-bottom:8px;">Start session</div>
+        <div id="focusPresetGrid" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:10px;"></div>
+        <button class="btn btn-ghost btn-sm" id="sessionClearBtn" style="width:100%;">Clear session</button>
+      </div>
+    </div>
   </div>
 
-  <div class="grid" style="margin-top:18px;">
+  <div class="grid" id="lowerGrid" style="margin-top:18px;">
     <div>
       <div class="panel">
         <div class="toolbar">
@@ -367,7 +411,7 @@
       </div>
     </div>
 
-    <div>
+    <div id="askTheQueueCol">
       <div class="panel">
         <div class="panel-title"><h2>Ask the Queue</h2><span class="mono" style="font-size:10px;color:var(--text-faint);">voice-enabled</span></div>
         <div id="apiKeyRow" style="display:none; margin-bottom:12px; padding:10px; background:var(--panel-2); border:1px solid var(--border); border-radius:6px;">
@@ -396,6 +440,8 @@
 </div>
 
 <button class="fab" id="fabBtn" title="New task">+</button>
+
+<div id="toastContainer" style="position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:100; display:flex; flex-direction:column; gap:8px; align-items:center;"></div>
 
 <div class="overlay" id="modalOverlay">
   <div class="modal">
@@ -598,6 +644,21 @@
   let recognizing = false;
   let recognition = null;
   let lastSuggestedId = null;
+  let appMode = localStorage.getItem('dispatch-app-mode') || 'dispatch';
+  let sessionQueue = [];
+  let sessionActive = false;
+  let currentSessionTaskId = null;
+  const SESSION_QUEUE_KEY = 'aperture-session-queue';
+  function loadSessionQueue(){
+    try{
+      const raw = localStorage.getItem(SESSION_QUEUE_KEY);
+      sessionQueue = raw ? JSON.parse(raw) : [];
+    }catch(e){ sessionQueue = []; }
+  }
+  function saveSessionQueue(){
+    try{ localStorage.setItem(SESSION_QUEUE_KEY, JSON.stringify(sessionQueue)); }
+    catch(e){ /* best effort */ }
+  }
   let dailyFilterOn = false;
   let weeklyFilterOn = false;
 
@@ -973,6 +1034,7 @@
     document.getElementById('doneCount').textContent = done.length;
     renderList('doneBody', done.slice().reverse(), done.length===0 ? '<div class="empty">Nothing closed yet.</div>' : '', true);
 
+    if(appMode === 'aperture') renderSessionBuilder();
     renderNextUp(active);
   }
 
@@ -990,7 +1052,11 @@
     let actions = '';
     let nextUpBtn = '';
     if(t.status === 'active'){
-      nextUpBtn = `<button class="btn btn-primary btn-sm" onclick="Dispatch.setNextUp('${t.id}')">Set as Next Up</button>`;
+      const inSession = sessionQueue.includes(t.id);
+      const addToSessionBtn = appMode === 'aperture'
+        ? `<button class="btn btn-sm" ${inSession ? 'disabled' : ''} onclick="Dispatch.addToSession('${t.id}')" style="${inSession ? 'background:var(--panel-2);color:var(--text-faint);border-color:var(--border);' : 'background:transparent;color:var(--teal);border-color:var(--teal);'}">${inSession ? '✓ In Session' : '+ Add to Session'}</button>`
+        : '';
+      nextUpBtn = `<button class="btn btn-primary btn-sm" onclick="Dispatch.setNextUp('${t.id}')">Set as Next Up</button>${addToSessionBtn}`;
       actions = `
         <button class="btn btn-sm" onclick="Dispatch.setStatus('${t.id}','done')">Done</button>
         <button class="btn btn-sm btn-ghost" onclick="Dispatch.openHoldModal('${t.id}')">Hold…</button>
@@ -1141,6 +1207,13 @@
 
   function renderNextUp(active){
     const body = document.getElementById('nextUpBody');
+    if(appMode === 'aperture' && sessionActive && currentSessionTaskId){
+      const sessionTask = tasks.find(t => t.id === currentSessionTaskId);
+      if(sessionTask){
+        renderNextUpCard(sessionTask);
+        return;
+      }
+    }
     if(active.length===0){
       body.innerHTML = '<div class="nextup-empty">Queue is empty. Log a task to get a recommendation.</div>';
       lastSuggestedId = null;
@@ -1153,6 +1226,10 @@
       candidate = active.slice().sort((a,b)=>computeScore(b)-computeScore(a))[0];
       lastSuggestedId = candidate.id;
     }
+    renderNextUpCard(candidate);
+  }
+  function renderNextUpCard(candidate){
+    const body = document.getElementById('nextUpBody');
     const t = candidate;
     body.innerHTML = `
       <div class="mono" style="font-size:10.5px; color:var(--text-faint); margin-bottom:6px;">${tid(t)}</div>
@@ -1239,6 +1316,287 @@
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
+
+  /* ============== TOAST NOTIFICATIONS ============== */
+  function showToast(message){
+    if(!message) return;
+    const container = document.getElementById('toastContainer');
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.textContent = message;
+    container.appendChild(el);
+    requestAnimationFrame(()=> el.classList.add('show'));
+    setTimeout(()=>{
+      el.classList.remove('show');
+      setTimeout(()=> el.remove(), 300);
+    }, 3200);
+  }
+
+  /* ============== FOCUS TIMER (Aperture mode) ============== */
+  const FOCUS_PRESETS = [
+    { work: 25, brk: 5,  label: 'Classic' },
+    { work: 25, brk: 10, label: 'Extended break' },
+    { work: 20, brk: 10, label: 'Balanced' },
+    { work: 15, brk: 5,  label: 'Quick burst' },
+    { work: 50, brk: 10, label: 'Deep work' },
+    { work: 45, brk: 15, label: 'Long haul' }
+  ];
+  let focusTimerId = null;
+  let focusRemaining = 0;
+  let focusAudioCtx = null;
+  let focusPhase = null;
+  let focusWorkCount = 0;
+  let focusPreset = null;
+
+  function ensureFocusAudio(){
+    if(!focusAudioCtx){
+      try{ focusAudioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+      catch(e){ return null; }
+    }
+    if(focusAudioCtx.state === 'suspended'){ focusAudioCtx.resume(); }
+    return focusAudioCtx;
+  }
+  function focusTone(ctx, freq, start, dur, peak){
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(peak, start + dur*0.15);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(start); osc.stop(start + dur + 0.05);
+  }
+  const FOCUS_PULSES = [[0, 1750], [2625, 4375], [5250, 7000]];
+  function focusChime(){
+    const ctx = ensureFocusAudio();
+    if(!ctx) return;
+    const now = ctx.currentTime;
+    const D = 1.75, pause = D/2;
+    [0, D+pause, 2*(D+pause)].forEach(function(offset){
+      focusTone(ctx, 587, now + offset, 1.0, 0.16);
+      focusTone(ctx, 880, now + offset + 0.35, 1.4, 0.14);
+    });
+  }
+  function renderFocusTime(){
+    const m = Math.floor(focusRemaining / 60);
+    const s = focusRemaining % 60;
+    document.getElementById('focusTimeLeft').textContent = m + ':' + String(s).padStart(2,'0');
+  }
+  function renderPresetGrid(){
+    const grid = document.getElementById('focusPresetGrid');
+    if(!grid) return;
+    grid.innerHTML = FOCUS_PRESETS.map((p,i)=>`
+      <button type="button" class="focus-preset-btn" data-i="${i}">
+        <span class="fp-time">${p.work}/${p.brk}</span>
+        <span class="fp-label">${p.label}</span>
+      </button>`).join('');
+    grid.querySelectorAll('.focus-preset-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        if(sessionQueue.length === 0) return;
+        startFocusSession(FOCUS_PRESETS[Number(btn.dataset.i)]);
+      });
+    });
+  }
+  function setPhaseUI(phase){
+    const label = document.getElementById('focusPhaseLabel');
+    const time = document.getElementById('focusTimeLeft');
+    if(phase === 'work'){
+      label.textContent = 'Focus session';
+      time.style.color = 'var(--amber)';
+    } else {
+      label.textContent = phase === 'longbreak' ? 'Long break' : 'Break';
+      time.style.color = 'var(--teal)';
+    }
+  }
+  function loadSessionTaskIntoNextUp(){
+    lastSuggestedId = currentSessionTaskId;
+    renderNextUp(tasks.filter(t=>t.status==='active'));
+  }
+  function startFocusSession(preset){
+    if(sessionQueue.length === 0) return;
+    ensureFocusAudio();
+    focusPreset = preset;
+    focusWorkCount = 0;
+    sessionActive = true;
+    currentSessionTaskId = sessionQueue[0];
+    document.getElementById('sessionBuilderPanel').style.display = 'none';
+    document.getElementById('lowerGrid').style.display = 'none';
+    document.getElementById('rerollBtn').style.display = 'none';
+    document.getElementById('sessionCompleteMsg').style.display = 'none';
+    document.getElementById('focusTimerRow').style.display = 'flex';
+    document.getElementById('modeDispatchBtn').disabled = true;
+    document.getElementById('modeApertureBtn').disabled = true;
+    loadSessionTaskIntoNextUp();
+    beginWorkBlock();
+  }
+  function beginWorkBlock(){
+    focusPhase = 'work';
+    focusWorkCount++;
+    setPhaseUI('work');
+    focusRemaining = focusPreset.work * 60;
+    renderFocusTime();
+    runFocusInterval();
+  }
+  function beginBreakBlock(isLong){
+    focusPhase = isLong ? 'longbreak' : 'break';
+    setPhaseUI(focusPhase);
+    focusRemaining = (isLong ? focusPreset.brk * 3 : focusPreset.brk) * 60;
+    renderFocusTime();
+    runFocusInterval();
+  }
+  function runFocusInterval(){
+    clearInterval(focusTimerId);
+    focusTimerId = setInterval(()=>{
+      focusRemaining--;
+      renderFocusTime();
+      if(focusRemaining <= 0){ clearInterval(focusTimerId); focusTransition(); }
+    }, 1000);
+  }
+  function focusTransition(){
+    pulseFocusCard();
+    if(focusPhase === 'work'){
+      const isLong = (focusWorkCount % 4 === 0);
+      setTimeout(()=> beginBreakBlock(isLong), 1200);
+    } else {
+      setTimeout(beginWorkBlock, 1200);
+    }
+  }
+  function pulseFocusCard(){
+    focusChime();
+    const panel = document.getElementById('nextUpPanel');
+    panel.style.transition = 'box-shadow 0.3s ease';
+    FOCUS_PULSES.forEach(function(p){
+      setTimeout(()=>{ panel.style.boxShadow = '0 0 0 3px rgba(226,166,59,0.5)'; }, p[0]);
+      setTimeout(()=>{ panel.style.boxShadow = 'none'; }, p[1]);
+    });
+  }
+  function showSessionComplete(){
+    clearInterval(focusTimerId);
+    sessionActive = false;
+    currentSessionTaskId = null;
+    document.getElementById('focusTimerRow').style.display = 'none';
+    document.getElementById('sessionCompleteMsg').style.display = 'block';
+    document.getElementById('sessionBuilderPanel').style.display = '';
+    document.getElementById('lowerGrid').style.display = '';
+    document.getElementById('rerollBtn').style.display = '';
+    document.getElementById('modeDispatchBtn').disabled = false;
+    document.getElementById('modeApertureBtn').disabled = false;
+    render();
+  }
+  function endFocusSession(){
+    clearInterval(focusTimerId);
+    focusPhase = null;
+    sessionActive = false;
+    currentSessionTaskId = null;
+    document.getElementById('sessionBuilderPanel').style.display = '';
+    document.getElementById('lowerGrid').style.display = '';
+    document.getElementById('rerollBtn').style.display = '';
+    document.getElementById('focusTimerRow').style.display = 'none';
+    document.getElementById('sessionCompleteMsg').style.display = 'none';
+    document.getElementById('modeDispatchBtn').disabled = false;
+    document.getElementById('modeApertureBtn').disabled = false;
+    render();
+  }
+
+  /* ============== SESSION BUILDER (Aperture mode) ============== */
+  let draggedSessionId = null;
+  function advanceSessionTask(){
+    if(sessionQueue.length === 0){
+      pulseFocusCard();
+      showSessionComplete();
+      return;
+    }
+    currentSessionTaskId = sessionQueue[0];
+    loadSessionTaskIntoNextUp();
+  }
+  function renderSessionBuilder(){
+    const hadCurrent = sessionActive && sessionQueue.includes(currentSessionTaskId);
+    const prunedQueue = sessionQueue.filter(id => {
+      const t = tasks.find(x=>x.id===id);
+      return t && t.status === 'active';
+    });
+    if(prunedQueue.length !== sessionQueue.length){
+      sessionQueue = prunedQueue;
+      saveSessionQueue();
+    }
+    if(hadCurrent && !sessionQueue.includes(currentSessionTaskId)){
+      advanceSessionTask();
+    }
+
+    const listEl = document.getElementById('sessionList');
+    const emptyEl = document.getElementById('sessionEmptyMsg');
+    if(!listEl) return;
+    if(sessionQueue.length === 0){
+      listEl.innerHTML = '';
+      emptyEl.style.display = 'block';
+    } else {
+      emptyEl.style.display = 'none';
+      listEl.innerHTML = sessionQueue.map((id,i)=>{
+        const t = tasks.find(x=>x.id===id);
+        return `<div class="session-item" draggable="true" data-id="${id}" style="display:flex; align-items:center; gap:8px; padding:8px 10px; background:var(--panel-2); border:1px solid var(--border); border-radius:5px; margin-bottom:6px; cursor:grab;">
+          <span style="color:var(--text-faint); font-size:13px; line-height:1;">⋮⋮</span>
+          <span class="mono" style="font-size:10.5px; color:var(--text-faint); width:16px;">${i+1}</span>
+          <span style="flex:1; font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(t ? t.title : '(removed)')}</span>
+          <button type="button" data-remove-id="${id}" style="background:none; border:none; color:var(--red); font-size:14px; padding:2px 4px; cursor:pointer;">×</button>
+        </div>`;
+      }).join('');
+      listEl.querySelectorAll('[data-remove-id]').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          sessionQueue = sessionQueue.filter(id => id !== btn.dataset.removeId);
+          saveSessionQueue();
+          renderSessionBuilder();
+        });
+      });
+      listEl.querySelectorAll('.session-item').forEach(row=>{
+        row.addEventListener('dragstart', ()=>{
+          draggedSessionId = row.dataset.id;
+          row.style.opacity = '0.4';
+        });
+        row.addEventListener('dragend', ()=>{ row.style.opacity = ''; });
+        row.addEventListener('dragover', e=>{ e.preventDefault(); });
+        row.addEventListener('drop', e=>{
+          e.preventDefault();
+          const targetId = row.dataset.id;
+          if(!draggedSessionId || draggedSessionId === targetId) return;
+          const fromIdx = sessionQueue.indexOf(draggedSessionId);
+          const toIdx = sessionQueue.indexOf(targetId);
+          if(fromIdx === -1 || toIdx === -1) return;
+          sessionQueue.splice(fromIdx, 1);
+          sessionQueue.splice(toIdx, 0, draggedSessionId);
+          saveSessionQueue();
+          renderSessionBuilder();
+        });
+      });
+    }
+    const countEl = document.getElementById('sessionCount');
+    if(countEl) countEl.textContent = sessionQueue.length ? sessionQueue.length + (sessionQueue.length===1?' task':' tasks') : '';
+  }
+  function addTaskToSession(id){
+    const t = tasks.find(x=>x.id===id && x.status==='active');
+    if(!t || sessionQueue.includes(id)) return;
+    sessionQueue.push(id);
+    saveSessionQueue();
+    render();
+  }
+
+  /* ============== MODE SWITCHING ============== */
+  function applyMode(mode){
+    appMode = mode;
+    try{ localStorage.setItem('dispatch-app-mode', mode); }catch(e){}
+    document.getElementById('modeDispatchBtn').classList.toggle('selected', mode === 'dispatch');
+    document.getElementById('modeApertureBtn').classList.toggle('selected', mode === 'aperture');
+    document.getElementById('appTagline').textContent = mode === 'aperture'
+      ? 'one thing at a time · v3.1.0'
+      : 'work queue console · v3.1.0';
+    document.getElementById('quickMatchPanel').style.display = mode === 'dispatch' ? '' : 'none';
+    document.getElementById('sessionBuilderPanel').style.display = mode === 'aperture' ? '' : 'none';
+    document.getElementById('askTheQueueCol').style.display = mode === 'dispatch' ? '' : 'none';
+    document.getElementById('lowerGrid').style.gridTemplateColumns = mode === 'dispatch' ? '1fr 340px' : '1fr';
+    render();
+  }
+  document.getElementById('modeDispatchBtn').addEventListener('click', ()=> applyMode('dispatch'));
+  document.getElementById('modeApertureBtn').addEventListener('click', ()=> applyMode('aperture'));
 
   /* ============== ACTIONS ============== */
   let undoSnapshot = null;
@@ -1457,7 +1815,7 @@
   }
 
   window.Dispatch = {
-    setStatus, deleteTask, editTask, openHoldModal, setNextUp,
+    setStatus, deleteTask, editTask, openHoldModal, setNextUp, addToSession: addTaskToSession,
     nuDebouncedField, nuCommitField, nuSetPriority, nuSetDifficulty,
     nuSetDue, nuToggleRecur, nuToggleWeekday
   };
@@ -1880,6 +2238,7 @@
   }
 
   function appendMsg(role, content){
+    if(role === 'system'){ showToast(content); return; }
     chatHistory.push({role, content, ts: tsNow()});
     renderChat();
     saveChat();
@@ -2067,6 +2426,20 @@ ${taskLines}`;
     lastSuggestedId = others[Math.floor(Math.random()*others.length)].id;
     renderNextUp(active);
   });
+  document.getElementById('endFocusBtn').addEventListener('click', endFocusSession);
+  document.getElementById('sessionAddAllBtn').addEventListener('click', ()=>{
+    const active = tasks.filter(t=>t.status==='active');
+    sessionQueue = active.slice().sort((a,b)=>computeScore(b)-computeScore(a)).map(t=>t.id);
+    saveSessionQueue();
+    renderSessionBuilder();
+  });
+  document.getElementById('sessionClearBtn').addEventListener('click', ()=>{
+    sessionQueue = [];
+    currentSessionTaskId = null;
+    sessionActive = false;
+    saveSessionQueue();
+    renderSessionBuilder();
+  });
   [1,2,3,4].forEach(q=>{
     document.getElementById('quadBtn'+q).addEventListener('click', ()=> handleQuadrantClick(q));
   });
@@ -2160,6 +2533,9 @@ ${taskLines}`;
   async function init(){
     renderChips();
     updateSyncNowVisibility();
+    loadSessionQueue();
+    renderPresetGrid();
+    applyMode(appMode);
     await loadTasks();
     await loadChat();
     if(chatHistory.length === 0){

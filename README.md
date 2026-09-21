@@ -6,7 +6,12 @@ Dispatch is a single-file web app for managing a personal work portfolio: log ta
 
 It's a single HTML file on purpose — fork it, gut what doesn't help, build on what does. There's no "correct" way to use Dispatch; if a rule or feature here fights how your brain actually works, change it.
 
-**Current version: v3.0.0** (shown in the app header; see [Version History](#version-history) below)
+**Current version: v3.1.0** (shown in the app header; see [Version History](#version-history) below)
+
+Dispatch now has two modes, toggled by a pill switch in the header, both sharing one task list, one Cloud Sync bin, everything:
+
+- **Dispatch mode** (default) — for when you don't know where to start. Quick Match, Ask the Queue, and auto-suggested Next Up all surface something for you.
+- **Aperture mode** — for when you already know what you need to do and the structure to do it in. A Session Builder replaces Quick Match; you hand-pick and order specific tasks, then start a Focus Timer to run through them (a la the Pomodoro technique: https://en.wikipedia.org/wiki/Pomodoro_Technique).
 
 ## Features
 
@@ -30,9 +35,20 @@ It's a single HTML file on purpose — fork it, gut what doesn't help, build on 
 - **Quick Add companion page** (`quick-add.html`) — a separate page for adding a task from your phone without opening the full app. Exposes the same fields you'd see adding a task in Dispatch — title, notes, priority, difficulty, minutes, due date/Daily/Weekly, tags, and Start on Hold — defaulting to Medium priority, Medium difficulty, and 30 minutes if you don't touch them. Writes directly to the same shared bin as Cloud Sync. Great as a home-screen bookmark.
 - **Export / Import** — download your task list as a `.json` file (also copied to clipboard) and import it elsewhere. **Import fully replaces your current task list** with the imported file's contents — it does not merge — and shows a confirm-before-wipe review step (with counts) before anything is deleted.
 
+## Aperture Mode
+
+Toggle to **Aperture** in the header pill switch to swap Dispatch's passive-suggestion tools (Quick Match, Ask the Queue) for an active sequencing workflow. Everything else — the task list, Undo, Cloud Sync, Export/Import — stays exactly the same underneath; only the panel beside Next Up and Next Up's own behavior change.
+
+- **Session Builder** (in the panel where Quick Match sits in Dispatch mode) — tap **"+ Add to Session"** on any active task's ticket (next to "Set as Next Up") to queue it, or **"Add All (highest score first)"** to queue your entire active list at once, sorted by score (this replaces whatever's currently built rather than appending to it). Drag items in the list to reorder them. A built-but-not-started session is remembered (in that browser's `localStorage`) until you start it or hit Clear — closing the tab won't lose it.
+- **A task drops out of the queue automatically** the moment it's marked Done, put on Hold, De-prioritized, or set to Done for Day — it won't linger as a stale entry once it's no longer active.
+- **Focus Timer, decoupled from task completion** — pick a work/break preset (25/5, 25/10, 20/10, 15/5, 50/10, or 45/15 minutes) to start a repeating Pomodoro cycle: work → break → work → break, with a long break (3× the short break) automatically substituted every 4th work block. **The timer runs as its own independent rhythm** — it never pauses, skips, or waits on you finishing a task. **Next Up, separately, advances the instant your current task leaves active status** — pulling in whatever's next from the Session Builder immediately, regardless of what phase the timer happens to be in. Block length comes from the preset, not each task's own time estimate, to keep the planning step light.
+- While a session runs: Quick Match/Ask the Queue's old spot and the task list hide, leaving only Next Up (fully editable) and the countdown. On every timer transition (work ending, break ending): a two-tone bell repeated 3 times (pause between each half the bell's own length, ~7s total), synced with a matching pulse on the card.
+- **The session ends the instant the Session Builder queue is empty** — not at the next block boundary — showing a "session complete" message and returning to normal view. **"End Timer"** is a subtle underlined link that ends the whole session manually at any point.
+- **The mode toggle locks while a session is running** (both buttons are disabled — end or complete the session first) so you can't orphan a running timer by switching modes mid-session.
+
 ## Getting Started
 
-### Option A: Run it inside Claude (recommended)
+### Option A: Run it inside Claude (recommended if you want to use the Ask the Queue chat feature)
 
 Open `dispatch.html` as a Claude artifact (e.g. by uploading it into a claude.ai conversation, or continuing to use the version already shared with you there). This is the only mode where:
 - Task and chat data **persist automatically** and can sync across devices logged into the same Claude account.
@@ -42,7 +58,7 @@ Open `dispatch.html` as a Claude artifact (e.g. by uploading it into a claude.ai
 ### Option B: Run it standalone in any browser
 
 Just open `dispatch.html` directly (double-click it, or drag it into a browser tab). In this mode:
-- Task and chat data are saved to that browser's **`localStorage`** automatically — persisting across sessions on that device/browser, but **not syncing** to other devices or browsers.
+- Task and chat data are saved to that browser's **`localStorage`** automatically — persisting across sessions on that device/browser, but **not syncing** to other devices or browsers (See Cloud Sync Setup below for steps on setting up shared storage).
 - The **chat assistant will not work** — it calls `https://api.anthropic.com/v1/messages` directly from the page, which only succeeds inside Claude's own environment out of the box, **unless** you supply your own Anthropic API key. When running standalone, a small "Ask the Queue" settings box appears where you can paste a key from [console.anthropic.com](https://console.anthropic.com); it's stored only in that browser's `localStorage` (via the `anthropic-dangerous-direct-browser-access` header for a "bring your own key" client-side pattern) — it is never written into this file, uploaded, or included in an Export. **Never hardcode a real API key into `dispatch.html` itself, especially before committing it to a public repo** — always enter it through that box at runtime instead. Everything else (task tracking, scoring, hold/daily/weekly, export/import, voice input for dictation) works fully offline regardless.
 
 ### Moving data between copies
@@ -119,6 +135,7 @@ score = (6 − priority) × 22 − difficulty × 6 − min(estMinutes, 240) / 24
 | v2.8.1 | "Set as Next Up" moved to its own bottom-left row, styled amber like "+ New Task" |
 | v2.9.0 | Fixed data-loss bug: Cloud Sync now does fetch-merge-push instead of blindly overwriting the bin, so a stale session can't erase tasks added elsewhere |
 | v3.0.0 | Added "Start this task on hold" to task creation/editing and to quick-add.html, matching the standalone Hold options |
+| v3.1.0 | Merged Aperture back in as a mode (Session Builder + decoupled Focus Timer) instead of a separate forked app, toggled by a header pill switch |
 
 ## Notes & Limitations
 
