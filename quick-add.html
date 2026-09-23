@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<!-- DISPATCH QUICK ADD — companion page, v2.1.0. Adds one task to the shared Dispatch cloud bin. -->
+<!-- DISPATCH QUICK ADD — companion page, v2.2.0. Adds one task to the shared Dispatch cloud bin. -->
+<!-- v2.2.0: added subtasks — inline "+ Add subtask", checkbox/strikethrough, delete, and drag-to-reorder, held locally until the task is created -->
 <!-- v2.1.0: added "Start this task on hold" option matching Dispatch's Hold controls (1hr/4hr, Days/Weeks stepper, specific day) -->
 <!-- v2.0.1: new tasks now stamp updatedAt, for consistency with Dispatch's fetch-merge-push sync logic -->
 <!-- v2.0.0: exposes all task fields (notes, priority, difficulty, minutes, due/daily/weekly, tags) instead of title-only -->
@@ -27,6 +28,19 @@
   .card{ width:100%; max-width:460px; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:26px; }
   .field{ margin-bottom:16px; }
   .field-label{ display:block; font-size:11px; color:var(--dim); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em; }
+  .subtask-row{ display:flex; align-items:center; gap:8px; padding:4px 0; cursor:grab; }
+  .subtask-grip{ color:var(--faint); font-size:12px; line-height:1; flex-shrink:0; }
+  .subtask-row input[type=checkbox]{ width:auto; accent-color:var(--teal); flex-shrink:0; cursor:pointer; }
+  .subtask-text{ flex:1; font-size:12.5px; color:var(--text); }
+  .subtask-text.done{ text-decoration:line-through; color:var(--faint); }
+  .subtask-del{ background:none; border:none; color:var(--faint); font-size:14px; padding:2px 4px; cursor:pointer; flex-shrink:0; line-height:1; }
+  .subtask-del:hover{ color:var(--red); }
+  .subtask-add-btn{ background:none; border:none; color:var(--teal); font-size:11.5px; padding:4px 0; cursor:pointer; }
+  .subtask-add-row{ display:flex; gap:6px; margin-top:4px; align-items:center; }
+  .subtask-input{ flex:1; background:var(--panel2); border:1px solid var(--border); color:var(--text); padding:6px 9px; border-radius:5px; font-size:12.5px; }
+  .subtask-input:focus{ outline:none; border-color:var(--teal); }
+  .btn-sm{ background:var(--panel2); border:1px solid var(--border); color:var(--text); padding:6px 12px; border-radius:5px; font-size:11.5px; cursor:pointer; }
+  .btn-sm.btn-ghost{ background:transparent; }
   .notes-input{ width:100%; background:var(--panel2); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:13px; padding:10px 12px; resize:vertical; min-height:60px; }
   .notes-input:focus{ outline:none; border-color:var(--teal); }
   .num-input, .date-input{ width:100%; background:var(--panel2); border:1px solid var(--border); border-radius:7px; color:var(--text); font-size:13px; padding:10px 12px; }
@@ -132,6 +146,18 @@
     <div class="field">
       <label class="field-label">Notes</label>
       <textarea class="notes-input" id="notesInput" placeholder="Optional context…"></textarea>
+    </div>
+
+    <div class="field">
+      <label class="field-label">Subtasks</label>
+      <div id="subtaskList"></div>
+      <div class="subtask-add-row" id="subtaskAddRow" style="display:none;">
+        <input type="text" class="subtask-input" id="subtaskInput" placeholder="Subtask description"
+          onkeydown="if(event.key==='Enter'){addSubtaskFromInput();} if(event.key==='Escape'){hideSubtaskInput();}">
+        <button type="button" class="btn-sm" id="subtaskAddConfirmBtn">Add</button>
+        <button type="button" class="btn-sm btn-ghost" id="subtaskCancelBtn">Cancel</button>
+      </div>
+      <button type="button" class="subtask-add-btn" id="subtaskAddBtn">+ Add subtask</button>
     </div>
 
     <div class="row2">
@@ -370,6 +396,76 @@
     updateTaskHoldStepperUI();
     updateTaskHoldSummary();
   }
+
+  /* ---- Subtasks (held locally until the task is created) ---- */
+  let pendingSubtasks = [];
+  let draggedSubtaskId = null;
+  function renderSubtaskList(){
+    const el = document.getElementById('subtaskList');
+    el.innerHTML = pendingSubtasks.map(s => `
+      <div class="subtask-row" draggable="true" data-sub-id="${s.id}">
+        <span class="subtask-grip">⋮⋮</span>
+        <input type="checkbox" ${s.done ? 'checked' : ''} data-toggle-id="${s.id}">
+        <span class="subtask-text${s.done ? ' done' : ''}">${escapeHtmlLocal(s.text)}</span>
+        <button type="button" class="subtask-del" data-remove-id="${s.id}">×</button>
+      </div>`).join('');
+    el.querySelectorAll('[data-toggle-id]').forEach(cb=>{
+      cb.addEventListener('change', ()=>{
+        const s = pendingSubtasks.find(x=>x.id===cb.dataset.toggleId);
+        if(s){ s.done = cb.checked; renderSubtaskList(); }
+      });
+    });
+    el.querySelectorAll('[data-remove-id]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        pendingSubtasks = pendingSubtasks.filter(x=>x.id!==btn.dataset.removeId);
+        renderSubtaskList();
+      });
+    });
+    el.querySelectorAll('.subtask-row').forEach(row=>{
+      row.addEventListener('dragstart', ()=>{
+        draggedSubtaskId = row.dataset.subId;
+        row.style.opacity = '0.4';
+      });
+      row.addEventListener('dragend', ()=>{ row.style.opacity = ''; draggedSubtaskId = null; });
+      row.addEventListener('dragover', e=>{ e.preventDefault(); });
+      row.addEventListener('drop', e=>{
+        e.preventDefault();
+        const targetId = row.dataset.subId;
+        if(!draggedSubtaskId || draggedSubtaskId === targetId) return;
+        const fromIdx = pendingSubtasks.findIndex(s=>s.id===draggedSubtaskId);
+        const toIdx = pendingSubtasks.findIndex(s=>s.id===targetId);
+        if(fromIdx === -1 || toIdx === -1) return;
+        const [moved] = pendingSubtasks.splice(fromIdx, 1);
+        pendingSubtasks.splice(toIdx, 0, moved);
+        renderSubtaskList();
+      });
+    });
+  }
+  function escapeHtmlLocal(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function showSubtaskInputRow(){
+    document.getElementById('subtaskAddRow').style.display = 'flex';
+    document.getElementById('subtaskAddBtn').style.display = 'none';
+    document.getElementById('subtaskInput').focus();
+  }
+  function hideSubtaskInput(){
+    document.getElementById('subtaskAddRow').style.display = 'none';
+    document.getElementById('subtaskAddBtn').style.display = '';
+    document.getElementById('subtaskInput').value = '';
+  }
+  function addSubtaskFromInput(){
+    const input = document.getElementById('subtaskInput');
+    const text = input.value.trim();
+    if(!text) return;
+    pendingSubtasks.push({ id: 'st_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7), text, done:false });
+    input.value = '';
+    renderSubtaskList();
+    showSubtaskInputRow();
+  }
+  document.getElementById('subtaskAddBtn').addEventListener('click', showSubtaskInputRow);
+  document.getElementById('subtaskAddConfirmBtn').addEventListener('click', addSubtaskFromInput);
+  document.getElementById('subtaskCancelBtn').addEventListener('click', hideSubtaskInput);
   document.getElementById('fStartOnHold').addEventListener('change', e=>{
     document.getElementById('startHoldOptions').style.display = e.target.checked ? 'block' : 'none';
   });
@@ -533,6 +629,9 @@
     updateDueVisibility();
     document.getElementById('fTags').value = '';
     resetHoldSection();
+    pendingSubtasks = [];
+    hideSubtaskInput();
+    renderSubtaskList();
   }
   resetForm();
 
@@ -567,7 +666,8 @@
         dueDate: document.getElementById('fDue').value || null,
         daily, weekly,
         weeklyDays: getWeeklyDaysValue().length ? getWeeklyDaysValue() : [new Date().getDay()],
-        tags, status: 'active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+        tags, status: 'active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+        subtasks: pendingSubtasks.map(s => ({ id: s.id, text: s.text, done: s.done }))
       };
       if(document.getElementById('fStartOnHold').checked){
         let holdFields = resolveTaskHoldFields();

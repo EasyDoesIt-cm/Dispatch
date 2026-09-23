@@ -6,7 +6,7 @@ Dispatch is a single-file web app for managing a personal work portfolio: log ta
 
 It's a single HTML file on purpose — fork it, gut what doesn't help, build on what does. There's no "correct" way to use Dispatch; if a rule or feature here fights how your brain actually works, change it.
 
-**Current version: v3.2.1** (shown in the app header; see [Version History](#version-history) below)
+**Current version: v3.2.3** (shown in the app header; see [Version History](#version-history) below)
 
 Dispatch now has two modes, toggled by a pill switch in the header, both sharing one task list, one Cloud Sync bin, everything:
 
@@ -33,7 +33,7 @@ Dispatch now has two modes, toggled by a pill switch in the header, both sharing
 - **Chat assistant ("Ask the Queue")** — describe how much time or energy you have, and it recommends the best-fitting active task, using the Anthropic API. Supports voice input (browser speech recognition) and optional spoken replies. Only your active (non-Hold/Parked/De-prioritized/Closed) tasks are ever sent to the API. In standalone mode with a personal API key, each message typically costs well under a cent (Haiku 4.5 pricing, compact task format) — cost scales mainly with how many active tasks you have, since the whole active list is resent each message.
 - **Undo** — a header button reverts the single most recent change (status change, edit, hold, delete, or import overwrite) for catching misclicks. Single-level only, and automatic background changes (like a Daily task auto-reactivating) don't count toward it.
 - **Cloud Sync** — optional real cross-device sync via a free [JSONBin.io](https://jsonbin.io) bin: Dispatch loads from the cloud on open and pushes on every save, so anything added elsewhere (like from Quick Add) shows up the next time you open or refresh Dispatch. Pushes do a **fetch-merge-push** — every task is stamped with an `updatedAt` timestamp, and syncing keeps whichever copy of each task is newer rather than blindly overwriting the whole bin, so a stale or long-idle session can't silently erase tasks added elsewhere. Pushes are also batched (3-second debounce), so the UI never waits on the network. A **Sync Now** button in the header lets you pull in changes on demand. Falls back to the local cached copy if the network is unavailable. **Known limitation:** deleting a task on one device can still be "resurrected" by a stale session's merge, since there's no tracking yet of intentional deletions — this is a rarer and less damaging edge case than the overwrite bug the merge logic fixes, but worth knowing about. **Note:** Cloud Sync only works in the standalone version of Dispatch (downloaded file or hosted copy) — Claude's own artifact sandbox blocks outbound requests to third-party APIs like JSONBin, the same restriction that blocks microphone access there. See [Cloud Sync Setup](#cloud-sync-setup) below.
-- **Quick Add companion page** (`quick-add.html`) — a separate page for adding a task from your phone without opening the full app. Exposes the same fields you'd see adding a task in Dispatch — title, notes, priority, difficulty, minutes, due date/Daily/Weekly, tags, and Start on Hold — defaulting to Medium priority, Medium difficulty, and 30 minutes if you don't touch them. Writes directly to the same shared bin as Cloud Sync. Great as a home-screen bookmark.
+- **Quick Add companion page** (`quick-add.html`) — a separate page for adding a task from your phone without opening the full app. Exposes the same fields you'd see adding a task in Dispatch — title, notes, priority, difficulty, minutes, due date/Daily/Weekly, tags, subtasks, and Start on Hold — defaulting to Medium priority, Medium difficulty, and 30 minutes if you don't touch them. Writes directly to the same shared bin as Cloud Sync. Great as a home-screen bookmark.
 - **Export / Import** — download your task list as a `.json` file (also copied to clipboard) and import it elsewhere. **Import fully replaces your current task list** with the imported file's contents — it does not merge — and shows a confirm-before-wipe review step (with counts) before anything is deleted.
 
 ## Aperture Mode
@@ -52,7 +52,7 @@ Toggle to **Aperture** in the header pill switch to swap Dispatch's passive-sugg
 ### Option A: Run it inside Claude (recommended if you want to use the Ask the Queue chat feature)
 
 Open `dispatch.html` as a Claude artifact (e.g. by uploading it into a claude.ai conversation, or continuing to use the version already shared with you there). This is the only mode where:
-- Task and chat data **persist automatically** and can sync across devices logged into the same Claude account.
+- Task and chat data **persist automatically for this artifact** and are tied to your Claude account. Reopening the *same* artifact (e.g. via its shared link, or continuing this same conversation/project) on another device should show the same data. **Worth knowing:** uploading a fresh copy of `dispatch.html` into a brand-new conversation isn't guaranteed to be treated as "the same artifact" for storage purposes — if you land on what looks like an empty task list after doing that, re-opening the original conversation/project (rather than re-uploading the file) is the more reliable path back to your data.
 - The **chat assistant** works, since it calls the Anthropic API using Claude's built-in credentials — no API key setup needed.
 - **Cloud Sync will not work here** — Claude's artifact sandbox blocks outbound requests to third-party APIs like JSONBin (the same restriction that blocks microphone access). Use the standalone version below if you want Cloud Sync.
 
@@ -81,7 +81,7 @@ Your Access Key and Bin ID are stored only in that browser's `localStorage` — 
 
 ### Quick Add from your phone
 
-`quick-add.html` is a second, separate file — a minimal page with just a text box and an "Add Task" button, for logging a task without opening the full Dispatch app. It writes directly to the same JSONBin bin as Cloud Sync.
+`quick-add.html` is a second, separate file — a lightweight page with the same fields as Dispatch's own New Task form (title, notes, priority, difficulty, time estimate, due date/Daily/Weekly, tags, subtasks, and Start on Hold), for logging a full task without opening the full Dispatch app. It writes directly to the same JSONBin bin as Cloud Sync.
 
 To use it:
 1. Host `quick-add.html` somewhere reachable from your phone. The easiest option is **GitHub Pages** — enable it on this repo (Settings → Pages), which gives you a public URL like `https://<username>.github.io/<repo>/quick-add.html`.
@@ -136,9 +136,11 @@ score = (6 − priority) × 22 − difficulty × 6 − min(estMinutes, 240) / 24
 | v2.8.1 | "Set as Next Up" moved to its own bottom-left row, styled amber like "+ New Task" |
 | v2.9.0 | Fixed data-loss bug: Cloud Sync now does fetch-merge-push instead of blindly overwriting the bin, so a stale session can't erase tasks added elsewhere |
 | v3.0.0 | Added "Start this task on hold" to task creation/editing and to quick-add.html, matching the standalone Hold options |
-| v3.1.0 | Merged Aperture back in as a mode (Session Builder + decoupled Focus Timer) instead of a separate forked app, toggled by a header pill switch |
+| v3.1.0 | Introduced Aperture Mode (Session Builder + decoupled Focus Timer) as a second, toggleable mode within Dispatch, switched via a header pill control |
 | v3.2.0 | Added subtasks/checklists — inline "+ Add subtask" on every task, with per-subtask checkboxes (strikethrough, not delete) and a remove button |
 | v3.2.1 | Subtask polish: fixed spacing collision on the Next Up card, added a Cancel button to the add-subtask row, and subtasks can now be drag-reordered |
+| v3.2.2 | Added subtasks to quick-add.html (same add/check/delete/reorder interaction as Dispatch itself); updated this README's description of quick-add.html, which had drifted out of date since it gained full fields back in v2.8.0 |
+| v3.2.3 | Documentation accuracy pass: reworded v3.1.0's history to stop implying Aperture was ever a separate forked repo (it was only ever prototyped in chat); clarified the Claude-artifact cross-device sync claim's real scope |
 
 ## Notes & Limitations
 

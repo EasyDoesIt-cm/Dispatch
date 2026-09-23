@@ -34,16 +34,15 @@
   v2.8.1  Moved "Set as Next Up" to its own row at the bottom-left of each ticket, styled amber like "+ New Task" instead of sitting inline with the other ghost-style buttons
   v2.9.0  Fixed a real data-loss bug: Cloud Sync push was a blind overwrite of the whole bin, so a stale/long-idle session could silently erase tasks added elsewhere (e.g. phone quick-adds). Every push now does fetch-merge-push instead: tasks are stamped with updatedAt on every change, and merging keeps whichever copy of each task is newer rather than blindly replacing. Known remaining limitation: a deletion on one device can still be "resurrected" by a stale session's merge, since there's no tombstone tracking yet
   v3.0.0  Added "Start this task on hold" to the task creation/edit modal and to quick-add.html — same options as the standalone Hold action (1hr/4hr quick buttons, Days/Weeks stretch stepper, specific day), with a live summary of the resolved resume time before saving
-  v3.1.0  Merged "Aperture" back in as a mode within Dispatch, rather than a separate forked app — a
-          Dispatch/Aperture pill toggle sits in the header (tagline and layout follow the active mode).
-          Dispatch mode is unchanged: Quick Match + Ask the Queue, auto-suggested Next Up. Aperture mode
-          swaps that side panel for a Session Builder (drag-to-reorder, "+ Add to Session" on tickets,
-          "Add All" by score) and a decoupled Focus Timer: the work/break metronome runs independently
-          of task completion, while Next Up advances the moment the current task leaves active status
-          (Done/Hold/Parked), regardless of timer phase. The toggle locks during an active session (via
-          native button disabled state — can't be triggered mid-session) to avoid orphaning session
-          state. Both modes share one task list, one Cloud Sync bin, one everything else. The standalone
-          Aperture app/fork is retired as of this version — it exists only as a mode here going forward.
+  v3.1.0  Added "Aperture" as a second mode within Dispatch, alongside the original (now called "Dispatch
+          mode") — a Dispatch/Aperture pill toggle sits in the header (tagline and layout follow the
+          active mode). Dispatch mode: Quick Match + Ask the Queue, auto-suggested Next Up. Aperture
+          mode swaps that side panel for a Session Builder (drag-to-reorder, "+ Add to Session" on
+          tickets, "Add All" by score) and a decoupled Focus Timer: the work/break metronome runs
+          independently of task completion, while Next Up advances the moment the current task leaves
+          active status (Done/Hold/Parked), regardless of timer phase. The toggle locks during an active
+          session (via native button disabled state — can't be triggered mid-session) to avoid orphaning
+          session state. Both modes share one task list, one Cloud Sync bin, one everything else.
   v3.2.0  Added subtasks/checklists: a "+ Add subtask" button on every task (main list tickets and the
           Next Up card) reveals an inline input; each subtask has its own checkbox, strikes through the
           text when checked (never deletes it), and has its own × to remove it entirely if unwanted.
@@ -52,6 +51,15 @@
   v3.2.1  Subtask polish: fixed visual collision between the Add-subtask row and the Priority section on
           the Next Up card; added a Cancel button next to Add (clears the input and closes the row); and
           subtasks can now be reordered by dragging them, same interaction as the Session Builder list.
+  v3.2.2  Added subtasks to quick-add.html — same inline add/checkbox-strikethrough/delete/drag-reorder
+          interaction as Dispatch's own task cards, held locally in the form until the task is created,
+          then sent along as part of the new task's data.
+  v3.2.3  Documentation accuracy pass (no functional changes): reworded the v3.1.0 entry above and the
+          matching README entry, which wrongly implied Aperture had existed as a separate forked repo
+          before being "merged back" — it was only ever prototyped in chat, never pushed to GitHub as
+          its own project. Also clarified the README's claim about Claude-artifact storage syncing
+          across devices: true for the same reopened artifact, not guaranteed for a freshly re-uploaded
+          copy of this file in a new conversation.
   -- bump this on every future change, and add a line above --
 -->
 <html lang="en">
@@ -329,7 +337,7 @@
       <div class="brand-mark">D</div>
       <div>
         <h1>Dispatch</h1>
-        <div class="tag" id="appTagline">work queue console · v3.2.1</div>
+        <div class="tag" id="appTagline">work queue console · v3.2.3</div>
       </div>
     </div>
     <div class="mode-toggle" id="modeToggle">
@@ -1718,8 +1726,8 @@
     document.getElementById('modeDispatchBtn').classList.toggle('selected', mode === 'dispatch');
     document.getElementById('modeApertureBtn').classList.toggle('selected', mode === 'aperture');
     document.getElementById('appTagline').textContent = mode === 'aperture'
-      ? 'one thing at a time · v3.2.1'
-      : 'work queue console · v3.2.1';
+      ? 'one thing at a time · v3.2.3'
+      : 'work queue console · v3.2.3';
     document.getElementById('quickMatchPanel').style.display = mode === 'dispatch' ? '' : 'none';
     document.getElementById('sessionBuilderPanel').style.display = mode === 'aperture' ? '' : 'none';
     document.getElementById('askTheQueueCol').style.display = mode === 'dispatch' ? '' : 'none';
