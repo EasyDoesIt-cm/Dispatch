@@ -6,7 +6,7 @@ Dispatch is a single-file web app for managing a personal work portfolio: log ta
 
 It's a single HTML file on purpose — fork it, gut what doesn't help, build on what does. There's no "correct" way to use Dispatch; if a rule or feature here fights how your brain actually works, change it.
 
-**Current version: v3.1.0** (shown in the app header; see [Version History](#version-history) below)
+**Current version: v3.2.1** (shown in the app header; see [Version History](#version-history) below)
 
 Dispatch now has two modes, toggled by a pill switch in the header, both sharing one task list, one Cloud Sync bin, everything:
 
@@ -16,6 +16,7 @@ Dispatch now has two modes, toggled by a pill switch in the header, both sharing
 ## Features
 
 - **Task tracking** — title, notes, priority, difficulty, estimated time, due date, tags.
+- **Subtasks/checklists** — "+ Add subtask" on any task (main list or Next Up) opens an inline input, with Add and Cancel buttons; each subtask gets its own checkbox, a × to remove it, and can be reordered by dragging. Checking one strikes through its text rather than deleting it, so you keep a record of what's done within a task, not just the task as a whole.
 - **Priority scale** — five named levels instead of raw numbers: **Top, High, Medium, Low, Whatevs** (Top = highest). Only one task can be Top at a time; setting a second Top prompts you to confirm the swap.
 - **Difficulty gauge** — a half-moon dial (Easy → Hard) instead of a plain slider, color-coded on the same scale as priority.
 - **Automatic scoring & "Next Up"** — every task gets a numeric score from priority, difficulty, time, and due-date urgency; the top-scoring task is surfaced as a fully editable card (title, notes, priority, difficulty, time estimate, recurrence, tags all editable in place with auto-save), with a "Reroll" option.
@@ -136,6 +137,8 @@ score = (6 − priority) × 22 − difficulty × 6 − min(estMinutes, 240) / 24
 | v2.9.0 | Fixed data-loss bug: Cloud Sync now does fetch-merge-push instead of blindly overwriting the bin, so a stale session can't erase tasks added elsewhere |
 | v3.0.0 | Added "Start this task on hold" to task creation/editing and to quick-add.html, matching the standalone Hold options |
 | v3.1.0 | Merged Aperture back in as a mode (Session Builder + decoupled Focus Timer) instead of a separate forked app, toggled by a header pill switch |
+| v3.2.0 | Added subtasks/checklists — inline "+ Add subtask" on every task, with per-subtask checkboxes (strikethrough, not delete) and a remove button |
+| v3.2.1 | Subtask polish: fixed spacing collision on the Next Up card, added a Cancel button to the add-subtask row, and subtasks can now be drag-reordered |
 
 ## Notes & Limitations
 

@@ -44,6 +44,14 @@
           native button disabled state — can't be triggered mid-session) to avoid orphaning session
           state. Both modes share one task list, one Cloud Sync bin, one everything else. The standalone
           Aperture app/fork is retired as of this version — it exists only as a mode here going forward.
+  v3.2.0  Added subtasks/checklists: a "+ Add subtask" button on every task (main list tickets and the
+          Next Up card) reveals an inline input; each subtask has its own checkbox, strikes through the
+          text when checked (never deletes it), and has its own × to remove it entirely if unwanted.
+          Subtasks are stored per-task and travel with it through Export/Import and Cloud Sync exactly
+          like any other field, no schema migration needed for existing tasks.
+  v3.2.1  Subtask polish: fixed visual collision between the Add-subtask row and the Priority section on
+          the Next Up card; added a Cancel button next to Add (clears the input and closes the row); and
+          subtasks can now be reordered by dragging them, same interaction as the Session Builder list.
   -- bump this on every future change, and add a line above --
 -->
 <html lang="en">
@@ -196,6 +204,18 @@
   .ticket .tid{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--text-faint); }
   .ticket .t{ font-size:14.5px; font-weight:600; }
   .ticket .notes{ font-size:12.5px; color:var(--text-dim); margin-top:4px; line-height:1.4; }
+  .subtasks-block{ margin-top:8px; margin-bottom:16px; }
+  .subtask-row{ display:flex; align-items:center; gap:8px; padding:4px 0; cursor:grab; }
+  .subtask-grip{ color:var(--text-faint); font-size:12px; line-height:1; flex-shrink:0; }
+  .subtask-row input[type=checkbox]{ width:auto; accent-color:var(--teal); flex-shrink:0; cursor:pointer; }
+  .subtask-text{ flex:1; font-size:12.5px; color:var(--text); }
+  .subtask-text.done{ text-decoration:line-through; color:var(--text-faint); }
+  .subtask-del{ background:none; border:none; color:var(--text-faint); font-size:14px; padding:2px 4px; cursor:pointer; flex-shrink:0; line-height:1; }
+  .subtask-del:hover{ color:var(--red); }
+  .subtask-add-btn{ background:none; border:none; color:var(--teal); font-size:11.5px; padding:4px 0; cursor:pointer; }
+  .subtask-add-row{ display:flex; gap:6px; margin-top:4px; align-items:center; }
+  .subtask-input{ flex:1; background:var(--panel-2); border:1px solid var(--border); color:var(--text); padding:6px 9px; border-radius:5px; font-size:12.5px; }
+  .subtask-input:focus{ outline:none; border-color:var(--teal); }
   .ticket-meta{ display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; }
   .chip{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--text-dim); background:rgba(255,255,255,0.03); border:1px solid var(--border); padding:2px 7px; border-radius:3px; }
   .chip.due{ color:var(--amber); border-color:rgba(226,166,59,0.4); }
@@ -309,7 +329,7 @@
       <div class="brand-mark">D</div>
       <div>
         <h1>Dispatch</h1>
-        <div class="tag" id="appTagline">work queue console · v3.1.0</div>
+        <div class="tag" id="appTagline">work queue console · v3.2.1</div>
       </div>
     </div>
     <div class="mode-toggle" id="modeToggle">
@@ -1088,6 +1108,7 @@
             <span class="t">${escapeHtml(t.title)}</span>
           </div>
           ${t.notes ? `<div class="notes">${escapeHtml(t.notes)}</div>` : ''}
+          ${renderSubtasksBlock(t)}
           <div class="ticket-meta">
             <span class="chip">${priorityName(t.priority)}</span>
             <span class="chip">difficulty ${t.difficulty}</span>
@@ -1236,6 +1257,8 @@
       <input class="nu-title" data-field="title" value="${escapeHtml(t.title)}" oninput="Dispatch.nuDebouncedField('${t.id}','title',this.value)" onblur="Dispatch.nuCommitField('${t.id}','title',this.value)">
       <textarea class="nu-notes" data-field="notes" placeholder="Notes…" rows="6" oninput="Dispatch.nuDebouncedField('${t.id}','notes',this.value)" onblur="Dispatch.nuCommitField('${t.id}','notes',this.value)">${escapeHtml(t.notes||'')}</textarea>
 
+      ${renderSubtasksBlock(t)}
+
       <div class="nu-row" style="grid-template-columns:2fr 1fr;">
         <div>
           <div class="nu-field-label">Priority</div>
@@ -1316,6 +1339,114 @@
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
+
+  /* ============== SUBTASKS ============== */
+  function renderSubtasksBlock(t){
+    const subs = t.subtasks || [];
+    const rows = subs.map(s => `
+      <div class="subtask-row" draggable="true" data-task-id="${t.id}" data-sub-id="${s.id}">
+        <span class="subtask-grip">⋮⋮</span>
+        <input type="checkbox" ${s.done ? 'checked' : ''} onchange="Dispatch.toggleSubtask('${t.id}','${s.id}')">
+        <span class="subtask-text${s.done ? ' done' : ''}">${escapeHtml(s.text)}</span>
+        <button type="button" class="subtask-del" title="Delete subtask" onclick="Dispatch.deleteSubtask('${t.id}','${s.id}')">×</button>
+      </div>`).join('');
+    return `
+      <div class="subtasks-block">
+        ${rows}
+        <div class="subtask-add-row" id="subtaskAddRow-${t.id}" style="display:none;">
+          <input type="text" class="subtask-input" id="subtaskInput-${t.id}" placeholder="Subtask description"
+            onkeydown="if(event.key==='Enter'){Dispatch.commitSubtask('${t.id}');} if(event.key==='Escape'){Dispatch.hideSubtaskInput('${t.id}');}">
+          <button type="button" class="btn btn-sm" onclick="Dispatch.commitSubtask('${t.id}')">Add</button>
+          <button type="button" class="btn btn-sm btn-ghost" onclick="Dispatch.hideSubtaskInput('${t.id}')">Cancel</button>
+        </div>
+        <button type="button" class="subtask-add-btn" id="subtaskAddBtn-${t.id}" onclick="Dispatch.showSubtaskInput('${t.id}')">+ Add subtask</button>
+      </div>`;
+  }
+  function showSubtaskInput(taskId){
+    const row = document.getElementById('subtaskAddRow-'+taskId);
+    const btn = document.getElementById('subtaskAddBtn-'+taskId);
+    if(!row || !btn) return;
+    row.style.display = 'flex';
+    btn.style.display = 'none';
+    const input = document.getElementById('subtaskInput-'+taskId);
+    if(input) input.focus();
+  }
+  function hideSubtaskInput(taskId){
+    const row = document.getElementById('subtaskAddRow-'+taskId);
+    const btn = document.getElementById('subtaskAddBtn-'+taskId);
+    const input = document.getElementById('subtaskInput-'+taskId);
+    if(row) row.style.display = 'none';
+    if(btn) btn.style.display = '';
+    if(input) input.value = '';
+  }
+  function commitSubtask(taskId){
+    const input = document.getElementById('subtaskInput-'+taskId);
+    if(!input) return;
+    const text = input.value.trim();
+    if(!text) return;
+    const t = tasks.find(x=>x.id===taskId);
+    if(!t) return;
+    if(!t.subtasks) t.subtasks = [];
+    t.subtasks.push({ id: 'st_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7), text, done:false });
+    touch(t);
+    saveTasks();
+    render();
+    showSubtaskInput(taskId);
+  }
+  function toggleSubtask(taskId, subId){
+    const t = tasks.find(x=>x.id===taskId);
+    if(!t || !t.subtasks) return;
+    const s = t.subtasks.find(x=>x.id===subId);
+    if(!s) return;
+    s.done = !s.done;
+    touch(t);
+    saveTasks();
+    render();
+  }
+  function deleteSubtask(taskId, subId){
+    const t = tasks.find(x=>x.id===taskId);
+    if(!t || !t.subtasks) return;
+    t.subtasks = t.subtasks.filter(x=>x.id!==subId);
+    touch(t);
+    saveTasks();
+    render();
+  }
+  let draggedSubtaskTaskId = null;
+  let draggedSubtaskId = null;
+  document.addEventListener('dragstart', e=>{
+    const row = e.target.closest('.subtask-row');
+    if(!row) return;
+    draggedSubtaskTaskId = row.dataset.taskId;
+    draggedSubtaskId = row.dataset.subId;
+    row.style.opacity = '0.4';
+  });
+  document.addEventListener('dragend', e=>{
+    const row = e.target.closest('.subtask-row');
+    if(row) row.style.opacity = '';
+    draggedSubtaskTaskId = null;
+    draggedSubtaskId = null;
+  });
+  document.addEventListener('dragover', e=>{
+    if(e.target.closest('.subtask-row')) e.preventDefault();
+  });
+  document.addEventListener('drop', e=>{
+    const row = e.target.closest('.subtask-row');
+    if(!row || !draggedSubtaskId) return;
+    e.preventDefault();
+    const targetTaskId = row.dataset.taskId;
+    const targetSubId = row.dataset.subId;
+    if(targetTaskId !== draggedSubtaskTaskId || targetSubId === draggedSubtaskId) return;
+    const t = tasks.find(x=>x.id===draggedSubtaskTaskId);
+    if(!t || !t.subtasks) return;
+    const fromIdx = t.subtasks.findIndex(s=>s.id===draggedSubtaskId);
+    const toIdx = t.subtasks.findIndex(s=>s.id===targetSubId);
+    if(fromIdx === -1 || toIdx === -1) return;
+    const [moved] = t.subtasks.splice(fromIdx, 1);
+    t.subtasks.splice(toIdx, 0, moved);
+    touch(t);
+    saveTasks();
+    render();
+  });
 
   /* ============== TOAST NOTIFICATIONS ============== */
   function showToast(message){
@@ -1587,8 +1718,8 @@
     document.getElementById('modeDispatchBtn').classList.toggle('selected', mode === 'dispatch');
     document.getElementById('modeApertureBtn').classList.toggle('selected', mode === 'aperture');
     document.getElementById('appTagline').textContent = mode === 'aperture'
-      ? 'one thing at a time · v3.1.0'
-      : 'work queue console · v3.1.0';
+      ? 'one thing at a time · v3.2.1'
+      : 'work queue console · v3.2.1';
     document.getElementById('quickMatchPanel').style.display = mode === 'dispatch' ? '' : 'none';
     document.getElementById('sessionBuilderPanel').style.display = mode === 'aperture' ? '' : 'none';
     document.getElementById('askTheQueueCol').style.display = mode === 'dispatch' ? '' : 'none';
@@ -1817,7 +1948,8 @@
   window.Dispatch = {
     setStatus, deleteTask, editTask, openHoldModal, setNextUp, addToSession: addTaskToSession,
     nuDebouncedField, nuCommitField, nuSetPriority, nuSetDifficulty,
-    nuSetDue, nuToggleRecur, nuToggleWeekday
+    nuSetDue, nuToggleRecur, nuToggleWeekday,
+    showSubtaskInput, hideSubtaskInput, commitSubtask, toggleSubtask, deleteSubtask
   };
 
   /* ============== PRIORITY BUTTONS & DIFFICULTY GAUGE ============== */
