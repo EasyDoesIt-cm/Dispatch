@@ -60,6 +60,27 @@
           its own project. Also clarified the README's claim about Claude-artifact storage syncing
           across devices: true for the same reopened artifact, not guaranteed for a freshly re-uploaded
           copy of this file in a new conversation.
+  v3.3.0  Five requested changes plus two bug fixes, bundled into one release:
+          (1) Removed the single-Top-priority limit entirely — any number of tasks can be Top at once,
+          no cap, no confirm/bump modal; the red color still flags them visually.
+          (2) Subtasks are now addable in the New/Edit Task modal itself (under Notes), not just after
+          the fact from a ticket or Next Up — same add/check/delete/drag-reorder interaction everywhere.
+          (3) Aperture's Focus Timer now has a sound selector (Session Builder, below Start Session) —
+          all 6 sounds from the original sound-test tool, each generalized to repeat 3x with the same
+          "pause = half the sound's own length" rule, shown as a button grid with small waveform-shape
+          icons per sound, plus one Preview button for whichever is currently selected. Choice persists.
+          (4) The standalone Hold modal ("Hold..." on a ticket) is rebuilt to match the single-selection
+          pattern already used by "Start on Hold": one tracked choice + live summary + one "Set Hold"
+          button, instead of two separate confusing confirm buttons.
+          (5) Quick Match is redesigned: explicit row/column headers turn it into a real 2D matrix
+          instead of 4 unlabeled buttons; color now encodes only energy (teal=low, amber=high), not a
+          4-color ramp; button copy is punchier ("Quick win" / "Easy stretch" / "Tough & fast" /
+          "Deep push") instead of repeating the literal axis words.
+          Bug fixes found along the way: (a) snapshotForUndo() was doing a full JSON.parse(JSON.stringify())
+          deep-clone of the entire task list on every single save/status-change — swapped for
+          structuredClone(), which is faster for this and behaves identically (verified). (b) moved the
+          New/Edit Task modal's Subtasks section from after Tags to directly under Notes, per feedback
+          on the first pass.
   -- bump this on every future change, and add a line above --
 -->
 <html lang="en">
@@ -149,24 +170,15 @@
   .btn.toggle-active{ background:var(--teal); border-color:var(--teal); color:#0d1a19; }
   .btn.toggle-active:hover{ background:var(--teal); color:#0d1a19; }
 
-  .quadrant-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-  .quadrant-btn{ background:var(--panel-2); border:1px solid var(--border); border-radius:6px; padding:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; transition:all .12s; aspect-ratio:1/1; }
-  .quadrant-btn:hover{ border-color:var(--amber); background:rgba(226,166,59,0.08); }
-  .quadrant-btn:active{ transform:scale(0.97); }
-  .quadrant-btn .q-label{ font-size:12.5px; font-weight:700; color:var(--text); }
-  .quadrant-btn .q-sub{ font-size:10.5px; color:var(--text-dim); }
-  .quadrant-btn.quad-1{ background:rgba(78,158,151,0.14); border-color:var(--p1); }
-  .quadrant-btn.quad-1 .q-label, .quadrant-btn.quad-1 .q-sub{ color:var(--p1); }
-  .quadrant-btn.quad-2{ background:rgba(111,169,107,0.14); border-color:var(--p2); }
-  .quadrant-btn.quad-2 .q-label, .quadrant-btn.quad-2 .q-sub{ color:var(--p2); }
-  .quadrant-btn.quad-3{ background:rgba(217,138,61,0.14); border-color:var(--p4); }
-  .quadrant-btn.quad-3 .q-label, .quadrant-btn.quad-3 .q-sub{ color:var(--p4); }
-  .quadrant-btn.quad-4{ background:rgba(193,82,61,0.14); border-color:var(--p5); }
-  .quadrant-btn.quad-4 .q-label, .quadrant-btn.quad-4 .q-sub{ color:var(--p5); }
-  .quadrant-btn.quad-1:hover{ background:rgba(78,158,151,0.24); }
-  .quadrant-btn.quad-2:hover{ background:rgba(111,169,107,0.24); }
-  .quadrant-btn.quad-3:hover{ background:rgba(217,138,61,0.24); }
-  .quadrant-btn.quad-4:hover{ background:rgba(193,82,61,0.24); }
+  .qm-matrix{ display:grid; grid-template-columns:auto 1fr 1fr; gap:6px; align-items:center; }
+  .qm-col-label{ text-align:center; font-size:9.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.04em; }
+  .qm-row-label{ font-size:9.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.04em; writing-mode:vertical-rl; transform:rotate(180deg); text-align:center; padding:4px 0; }
+  .qm-btn{ background:var(--panel-2); border:1px solid var(--border); border-radius:6px; padding:14px 8px; font-size:12.5px; font-weight:700; aspect-ratio:1.5/1; transition:all .12s; }
+  .qm-btn.qm-low{ border-color:var(--teal); color:var(--teal); }
+  .qm-btn.qm-low:hover{ background:rgba(78,158,151,0.12); }
+  .qm-btn.qm-high{ border-color:var(--amber); color:var(--amber); }
+  .qm-btn.qm-high:hover{ background:rgba(226,166,59,0.12); }
+  .qm-btn:active{ transform:scale(0.97); }
 
   .nu-saved{ font-size:10px; color:var(--teal); opacity:0; transition:opacity .3s; }
   .nu-saved.show{ opacity:1; }
@@ -307,9 +319,6 @@
   .gauge-current{ font-size:16px; font-weight:700; color:var(--amber); }
   .modal-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
 
-  .hold-options{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px; }
-  .hold-options button{ background:var(--panel-2); border:1px solid var(--border); color:var(--text); padding:10px; border-radius:5px; font-size:12.5px; text-align:left; }
-  .hold-options button:hover{ border-color:var(--teal); color:var(--teal); }
   .hold-unit-btn{ flex:1; background:var(--panel-2); border:1px solid var(--border); color:var(--text-faint); padding:7px; border-radius:5px; font-size:12px; font-weight:600; }
   .hold-unit-btn.selected{ background:rgba(78,158,151,0.18); border-color:var(--teal); color:var(--teal); font-weight:700; }
   .hold-stepper{ display:flex; align-items:center; justify-content:center; gap:16px; background:var(--panel-2); border:1px solid var(--border); border-radius:6px; padding:10px; margin-bottom:12px; }
@@ -326,6 +335,12 @@
   .focus-preset-btn:hover{ border-color:var(--amber); background:rgba(226,166,59,0.08); }
   .focus-preset-btn .fp-time{ font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:700; color:var(--amber); }
   .focus-preset-btn .fp-label{ font-size:10px; color:var(--text-dim); }
+  .focus-sound-btn{ background:var(--panel-2); border:1px solid var(--border); border-radius:6px; padding:8px 4px; display:flex; flex-direction:column; align-items:center; gap:4px; transition:all .12s; }
+  .focus-sound-btn:hover{ border-color:var(--teal); background:rgba(78,158,151,0.08); }
+  .focus-sound-btn.selected{ border-color:var(--teal); background:rgba(78,158,151,0.14); }
+  .focus-sound-btn svg{ display:block; }
+  .focus-sound-btn .fs-label{ font-size:9.5px; color:var(--text-dim); line-height:1.2; text-align:center; }
+  .focus-sound-btn.selected .fs-label{ color:var(--teal); font-weight:600; }
   .fab:hover{ background:#f0b455; }
 </style>
 </head>
@@ -337,7 +352,7 @@
       <div class="brand-mark">D</div>
       <div>
         <h1>Dispatch</h1>
-        <div class="tag" id="appTagline">work queue console · v3.2.3</div>
+        <div class="tag" id="appTagline">work queue console · v3.3.0</div>
       </div>
     </div>
     <div class="mode-toggle" id="modeToggle">
@@ -373,19 +388,16 @@
 
     <div class="panel" id="quickMatchPanel">
       <div class="panel-title"><h2>Quick Match</h2><span class="mono" style="font-size:10px;color:var(--text-faint);">no API — instant</span></div>
-      <div class="quadrant-grid">
-        <button class="quadrant-btn quad-1" id="quadBtn1" data-q="1">
-          <span class="q-label">Low Energy</span><span class="q-sub">Little Time</span>
-        </button>
-        <button class="quadrant-btn quad-2" id="quadBtn2" data-q="2">
-          <span class="q-label">Low Energy</span><span class="q-sub">Lots of Time</span>
-        </button>
-        <button class="quadrant-btn quad-3" id="quadBtn3" data-q="3">
-          <span class="q-label">High Energy</span><span class="q-sub">Little Time</span>
-        </button>
-        <button class="quadrant-btn quad-4" id="quadBtn4" data-q="4">
-          <span class="q-label">High Energy</span><span class="q-sub">Lots of Time</span>
-        </button>
+      <div class="qm-matrix">
+        <div></div>
+        <div class="qm-col-label">Little time</div>
+        <div class="qm-col-label">Lots of time</div>
+        <div class="qm-row-label">Low energy</div>
+        <button class="qm-btn qm-low" id="quadBtn1" data-q="1">Quick win</button>
+        <button class="qm-btn qm-low" id="quadBtn2" data-q="2">Easy stretch</button>
+        <div class="qm-row-label">High energy</div>
+        <button class="qm-btn qm-high" id="quadBtn3" data-q="3">Tough &amp; fast</button>
+        <button class="qm-btn qm-high" id="quadBtn4" data-q="4">Deep push</button>
       </div>
     </div>
 
@@ -398,6 +410,11 @@
         <div style="font-size:10px; text-transform:uppercase; color:var(--text-faint); letter-spacing:0.05em; margin-bottom:8px;">Start session</div>
         <div id="focusPresetGrid" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:10px;"></div>
         <button class="btn btn-ghost btn-sm" id="sessionClearBtn" style="width:100%;">Clear session</button>
+      </div>
+      <div style="border-top:1px solid var(--border); padding-top:14px; margin-top:14px;">
+        <div style="font-size:10px; text-transform:uppercase; color:var(--text-faint); letter-spacing:0.05em; margin-bottom:8px;">Focus sound</div>
+        <div id="focusSoundGrid" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:8px;"></div>
+        <button class="btn btn-sm btn-ghost" id="focusSoundPreviewBtn" style="width:100%;">▶ Preview</button>
       </div>
     </div>
   </div>
@@ -477,6 +494,18 @@
     <input type="hidden" id="editId">
     <div class="field"><label>Title</label><input type="text" id="fTitle" placeholder="e.g. Draft Q3 process map"></div>
     <div class="field"><label>Notes</label><textarea id="fNotes" placeholder="Optional context…"></textarea></div>
+
+    <div class="field">
+      <label>Subtasks</label>
+      <div id="modalSubtaskList"></div>
+      <div class="subtask-add-row" id="modalSubtaskAddRow" style="display:none;">
+        <input type="text" class="subtask-input" id="modalSubtaskInput" placeholder="Subtask description"
+          onkeydown="if(event.key==='Enter'){Dispatch.commitModalSubtask();} if(event.key==='Escape'){Dispatch.hideModalSubtaskInput();}">
+        <button type="button" class="btn btn-sm" onclick="Dispatch.commitModalSubtask()">Add</button>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="Dispatch.hideModalSubtaskInput()">Cancel</button>
+      </div>
+      <button type="button" class="subtask-add-btn" id="modalSubtaskAddBtn" onclick="Dispatch.showModalSubtaskInput()">+ Add subtask</button>
+    </div>
     <div class="row2">
       <div class="field">
         <label>Priority</label>
@@ -563,9 +592,10 @@
   <div class="modal" style="max-width:360px;">
     <h3>Put On Hold</h3>
     <input type="hidden" id="holdTaskId">
-    <div class="hold-options" style="grid-template-columns:1fr 1fr;">
-      <button data-mins="60">1 hour</button>
-      <button data-mins="240">4 hours</button>
+    <input type="hidden" id="holdMethod" value="">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
+      <button type="button" class="btn" id="holdQuick60Btn">1 hour</button>
+      <button type="button" class="btn" id="holdQuick240Btn">4 hours</button>
     </div>
     <div class="or-divider">hold for a stretch</div>
     <div style="display:flex; gap:6px; margin-bottom:10px;">
@@ -578,25 +608,12 @@
       <button type="button" id="holdStepUp">+</button>
       <span id="holdStepUnitLabel" style="font-size:11.5px; color:var(--text-dim);">days</span>
     </div>
-    <button class="btn btn-primary" id="setStretchHoldBtn" style="width:100%; margin-bottom:16px;">Set Hold</button>
     <div class="or-divider">or pick a specific day</div>
     <div class="field"><input type="date" id="holdCustomDay"></div>
+    <div id="holdSummary" style="display:none; background:rgba(226,166,59,0.08); border:1px solid rgba(226,166,59,0.35); border-radius:5px; padding:9px 11px; font-size:12px; color:var(--amber); margin-bottom:4px;"></div>
     <div class="modal-actions">
       <button class="btn" id="cancelHoldBtn">Cancel</button>
       <button class="btn btn-primary" id="confirmHoldBtn">Set Hold</button>
-    </div>
-  </div>
-</div>
-
-<div class="overlay" id="conflictModalOverlay">
-  <div class="modal" style="max-width:380px;">
-    <h3>Top Priority Already Assigned</h3>
-    <p style="font-size:13px; color:var(--text-dim); line-height:1.5; margin-bottom:16px;">
-      <span id="conflictTaskName" style="color:var(--text); font-weight:600;"></span> is currently the only task marked Top priority. Only one task can be Top at a time.
-    </p>
-    <div class="modal-actions" style="justify-content:flex-start; flex-wrap:wrap;">
-      <button class="btn btn-primary" id="conflictConfirmBtn">Make this the new Top priority</button>
-      <button class="btn" id="conflictCancelBtn">Keep this at High priority instead</button>
     </div>
   </div>
 </div>
@@ -1159,16 +1176,7 @@
       restore = { field: activeEl.dataset.field, start: activeEl.selectionStart, end: activeEl.selectionEnd };
     }
 
-    if(data.priority === 1 && t.priority !== 1){
-      const conflict = tasks.find(x => x.status==='active' && x.priority===1 && x.id!==id);
-      if(conflict){
-        pendingSave = { id, data };
-        document.getElementById('conflictTaskName').textContent = conflict.title;
-        document.getElementById('conflictModalOverlay').classList.add('open');
-        return;
-      }
-    }
-    await finalizeSave(id, data, null);
+    await finalizeSave(id, data);
     flashSaved();
 
     if(restore){
@@ -1495,10 +1503,10 @@
     if(focusAudioCtx.state === 'suspended'){ focusAudioCtx.resume(); }
     return focusAudioCtx;
   }
-  function focusTone(ctx, freq, start, dur, peak){
+  function focusTone(ctx, freq, start, dur, peak, type){
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'sine';
+    osc.type = type || 'sine';
     osc.frequency.value = freq;
     gain.gain.setValueAtTime(0.0001, start);
     gain.gain.exponentialRampToValueAtTime(peak, start + dur*0.15);
@@ -1506,17 +1514,108 @@
     osc.connect(gain); gain.connect(ctx.destination);
     osc.start(start); osc.stop(start + dur + 0.05);
   }
-  const FOCUS_PULSES = [[0, 1750], [2625, 4375], [5250, 7000]];
-  function focusChime(){
+  const SOUND_LIBRARY = {
+    'soft-chime': {
+      label: 'Soft chime', duration: 2.2, wave: 'M2,14 Q7,3 12,5 Q22,9 38,13',
+      play: (ctx, t) => focusTone(ctx, 528, t, 2.2, 0.18, 'sine')
+    },
+    'two-tone': {
+      label: 'Two-tone bell', duration: 1.75, wave: 'M2,14 Q5,7 8,8 Q13,9 16,5 Q24,1 30,4 Q35,7 38,13',
+      play: (ctx, t) => {
+        focusTone(ctx, 587, t, 1.0, 0.16, 'sine');
+        focusTone(ctx, 880, t + 0.35, 1.4, 0.14, 'sine');
+      }
+    },
+    'warm-pad': {
+      label: 'Warm pad', duration: 2.8, wave: 'M2,14 L6,5 L32,5 L38,13',
+      play: (ctx, t) => {
+        focusTone(ctx, 440, t, 2.8, 0.10, 'sine');
+        focusTone(ctx, 554, t, 2.8, 0.09, 'sine');
+        focusTone(ctx, 659, t, 2.8, 0.08, 'sine');
+      }
+    },
+    'soft-pluck': {
+      label: 'Soft pluck', duration: 0.9, wave: 'M2,14 L6,14 Q9,3 12,4 Q16,9 20,14 L38,14',
+      play: (ctx, t) => focusTone(ctx, 784, t, 0.9, 0.16, 'triangle')
+    },
+    'singing-bowl': {
+      label: 'Singing bowl', duration: 5.0, wave: 'M2,14 Q7,6 12,5 Q16,4 20,6 Q24,4 28,7 Q32,9 38,12',
+      play: (ctx, t) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const lfo = ctx.createOscillator();
+        const lfoGain = ctx.createGain();
+        osc.type = 'sine'; osc.frequency.value = 396;
+        lfo.type = 'sine'; lfo.frequency.value = 4.5;
+        lfoGain.gain.value = 4;
+        lfo.connect(lfoGain); lfoGain.connect(osc.frequency);
+        gain.gain.setValueAtTime(0.0001, t);
+        gain.gain.exponentialRampToValueAtTime(0.15, t + 0.6);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + 5.0);
+        osc.connect(gain); gain.connect(ctx.destination);
+        lfo.start(t); osc.start(t);
+        lfo.stop(t + 5.1); osc.stop(t + 5.1);
+      }
+    },
+    'marimba': {
+      label: 'Marimba knock', duration: 0.5, wave: 'M2,14 L5,14 L8,2 L11,13 L38,14',
+      play: (ctx, t) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(220, t);
+        osc.frequency.exponentialRampToValueAtTime(110, t + 0.25);
+        gain.gain.setValueAtTime(0.22, t);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t); osc.stop(t + 0.55);
+      }
+    }
+  };
+  let selectedFocusSound = (function(){
+    try{ return localStorage.getItem('dispatch-focus-sound') || 'two-tone'; }
+    catch(e){ return 'two-tone'; }
+  })();
+  function setFocusSound(id){
+    if(!SOUND_LIBRARY[id]) return;
+    selectedFocusSound = id;
+    try{ localStorage.setItem('dispatch-focus-sound', id); }catch(e){}
+  }
+  // Repeats the selected sound 3x; pause between each = half the sound's own length —
+  // same rule for every sound, matching the original two-tone-bell behavior.
+  function playSelectedFocusSound(){
     const ctx = ensureFocusAudio();
-    if(!ctx) return;
+    if(!ctx) return null;
+    const sound = SOUND_LIBRARY[selectedFocusSound] || SOUND_LIBRARY['two-tone'];
+    const D = sound.duration;
     const now = ctx.currentTime;
-    const D = 1.75, pause = D/2;
-    [0, D+pause, 2*(D+pause)].forEach(function(offset){
-      focusTone(ctx, 587, now + offset, 1.0, 0.16);
-      focusTone(ctx, 880, now + offset + 0.35, 1.4, 0.14);
+    [0, 1.5*D, 3*D].forEach(offset => sound.play(ctx, now + offset));
+    return [[0, D*1000], [1.5*D*1000, 2.5*D*1000], [3*D*1000, 4*D*1000]];
+  }
+  function focusChime(){
+    return playSelectedFocusSound();
+  }
+  function renderFocusSoundList(){
+    const el = document.getElementById('focusSoundGrid');
+    if(!el) return;
+    el.innerHTML = Object.keys(SOUND_LIBRARY).map(id => {
+      const s = SOUND_LIBRARY[id];
+      return `<button type="button" class="focus-sound-btn${id===selectedFocusSound?' selected':''}" data-sound-id="${id}">
+        <svg width="40" height="16" viewBox="0 0 40 16"><path d="${s.wave}" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="fs-label">${s.label}</span>
+      </button>`;
+    }).join('');
+    el.querySelectorAll('.focus-sound-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        setFocusSound(btn.dataset.soundId);
+        renderFocusSoundList();
+      });
     });
   }
+  document.getElementById('focusSoundPreviewBtn').addEventListener('click', ()=>{
+    playSelectedFocusSound();
+  });
+  renderFocusSoundList();
   function renderFocusTime(){
     const m = Math.floor(focusRemaining / 60);
     const s = focusRemaining % 60;
@@ -1602,10 +1701,10 @@
     }
   }
   function pulseFocusCard(){
-    focusChime();
+    const pulses = focusChime() || [[0, 1750], [2625, 4375], [5250, 7000]];
     const panel = document.getElementById('nextUpPanel');
     panel.style.transition = 'box-shadow 0.3s ease';
-    FOCUS_PULSES.forEach(function(p){
+    pulses.forEach(function(p){
       setTimeout(()=>{ panel.style.boxShadow = '0 0 0 3px rgba(226,166,59,0.5)'; }, p[0]);
       setTimeout(()=>{ panel.style.boxShadow = 'none'; }, p[1]);
     });
@@ -1726,8 +1825,8 @@
     document.getElementById('modeDispatchBtn').classList.toggle('selected', mode === 'dispatch');
     document.getElementById('modeApertureBtn').classList.toggle('selected', mode === 'aperture');
     document.getElementById('appTagline').textContent = mode === 'aperture'
-      ? 'one thing at a time · v3.2.3'
-      : 'work queue console · v3.2.3';
+      ? 'one thing at a time · v3.3.0'
+      : 'work queue console · v3.3.0';
     document.getElementById('quickMatchPanel').style.display = mode === 'dispatch' ? '' : 'none';
     document.getElementById('sessionBuilderPanel').style.display = mode === 'aperture' ? '' : 'none';
     document.getElementById('askTheQueueCol').style.display = mode === 'dispatch' ? '' : 'none';
@@ -1740,7 +1839,7 @@
   /* ============== ACTIONS ============== */
   let undoSnapshot = null;
   function snapshotForUndo(label){
-    undoSnapshot = { tasks: JSON.parse(JSON.stringify(tasks)), label };
+    undoSnapshot = { tasks: structuredClone(tasks), label };
     updateUndoButton();
   }
   function updateUndoButton(){
@@ -1876,36 +1975,60 @@
   function openHoldModal(id){
     document.getElementById('holdTaskId').value = id;
     document.getElementById('holdCustomDay').value = '';
+    document.getElementById('holdMethod').value = '';
     holdStepperUnit = 'days';
     holdStepperValue = 2;
+    document.getElementById('holdQuick60Btn').classList.remove('toggle-active');
+    document.getElementById('holdQuick240Btn').classList.remove('toggle-active');
     updateHoldStepperUI();
+    updateHoldSummary();
     document.getElementById('holdModalOverlay').classList.add('open');
   }
   function closeHoldModal(){ document.getElementById('holdModalOverlay').classList.remove('open'); }
 
-  async function confirmHold(untilIso){
-    const id = document.getElementById('holdTaskId').value;
-    const t = tasks.find(x=>x.id===id);
-    if(!t || !untilIso) return;
-    snapshotForUndo(`put "${t.title}" on hold`);
-    t.status = 'onhold';
-    t.holdUntil = untilIso;
-    delete t.holdUntilDay;
-    touch(t);
-    if(lastSuggestedId === id) lastSuggestedId = null;
-    await saveTasks();
-    closeHoldModal();
-    render();
+  function updateHoldSummary(){
+    const method = document.getElementById('holdMethod').value;
+    const el = document.getElementById('holdSummary');
+    if(!method){ el.style.display = 'none'; return; }
+    let text = '';
+    if(method === 'quick60') text = 'Will be put on hold, resuming in 1 hour';
+    else if(method === 'quick240') text = 'Will be put on hold, resuming in 4 hours';
+    else if(method === 'stretch') text = `Will be put on hold, resuming in ${holdStepperValue} ${holdStepperUnit}`;
+    else if(method === 'specific'){
+      const val = document.getElementById('holdCustomDay').value;
+      text = val ? `Will be put on hold, resuming ${val}` : 'Pick a day to resume';
+    }
+    el.textContent = text;
+    el.style.display = 'block';
   }
 
-  async function confirmHoldDay(dateStr){
+  function resolveHoldFields(){
+    const method = document.getElementById('holdMethod').value;
+    if(method === 'quick60') return { holdUntil: new Date(Date.now()+60*60000).toISOString(), holdUntilDay: null };
+    if(method === 'quick240') return { holdUntil: new Date(Date.now()+240*60000).toISOString(), holdUntilDay: null };
+    if(method === 'stretch'){
+      const days = holdStepperUnit === 'weeks' ? holdStepperValue * 7 : holdStepperValue;
+      const d = new Date(); d.setDate(d.getDate() + days);
+      return { holdUntil: null, holdUntilDay: localDateKey(d) };
+    }
+    if(method === 'specific'){
+      const val = document.getElementById('holdCustomDay').value;
+      if(!val) return null;
+      return { holdUntil: null, holdUntilDay: val };
+    }
+    return null;
+  }
+
+  async function confirmHold(){
     const id = document.getElementById('holdTaskId').value;
     const t = tasks.find(x=>x.id===id);
-    if(!t || !dateStr) return;
+    const fields = resolveHoldFields();
+    if(!t || !fields) return;
     snapshotForUndo(`put "${t.title}" on hold`);
     t.status = 'onhold';
-    t.holdUntilDay = dateStr;
-    delete t.holdUntil;
+    t.holdUntil = fields.holdUntil;
+    if(fields.holdUntil) delete t.holdUntilDay; else t.holdUntilDay = fields.holdUntilDay;
+    if(!fields.holdUntil) delete t.holdUntil;
     touch(t);
     if(lastSuggestedId === id) lastSuggestedId = null;
     await saveTasks();
@@ -1957,7 +2080,8 @@
     setStatus, deleteTask, editTask, openHoldModal, setNextUp, addToSession: addTaskToSession,
     nuDebouncedField, nuCommitField, nuSetPriority, nuSetDifficulty,
     nuSetDue, nuToggleRecur, nuToggleWeekday,
-    showSubtaskInput, hideSubtaskInput, commitSubtask, toggleSubtask, deleteSubtask
+    showSubtaskInput, hideSubtaskInput, commitSubtask, toggleSubtask, deleteSubtask,
+    showModalSubtaskInput, hideModalSubtaskInput, commitModalSubtask
   };
 
   /* ============== PRIORITY BUTTONS & DIFFICULTY GAUGE ============== */
@@ -2111,6 +2235,9 @@
     setWeeklyDaysValue((t && t.weekly) ? weeklyDaysOf(t) : [new Date().getDay()]);
     updateDueVisibility();
     document.getElementById('fTags').value = t ? (t.tags||[]).join(', ') : '';
+    modalSubtasks = t && t.subtasks ? t.subtasks.map(s => ({...s})) : [];
+    hideModalSubtaskInput();
+    renderModalSubtaskList();
     document.getElementById('fStartOnHold').checked = false;
     document.getElementById('startHoldOptions').style.display = 'none';
     document.getElementById('fHoldMethod').value = '';
@@ -2125,6 +2252,69 @@
     document.getElementById('fTitle').focus();
   }
   function closeModal(){ document.getElementById('modalOverlay').classList.remove('open'); }
+
+  let modalSubtasks = [];
+  let draggedModalSubtaskId = null;
+  function renderModalSubtaskList(){
+    const el = document.getElementById('modalSubtaskList');
+    el.innerHTML = modalSubtasks.map(s => `
+      <div class="subtask-row" draggable="true" data-sub-id="${s.id}">
+        <span class="subtask-grip">⋮⋮</span>
+        <input type="checkbox" ${s.done ? 'checked' : ''} data-toggle-id="${s.id}">
+        <span class="subtask-text${s.done ? ' done' : ''}">${escapeHtml(s.text)}</span>
+        <button type="button" class="subtask-del" data-remove-id="${s.id}">×</button>
+      </div>`).join('');
+    el.querySelectorAll('[data-toggle-id]').forEach(cb=>{
+      cb.addEventListener('change', ()=>{
+        const s = modalSubtasks.find(x=>x.id===cb.dataset.toggleId);
+        if(s){ s.done = cb.checked; renderModalSubtaskList(); }
+      });
+    });
+    el.querySelectorAll('[data-remove-id]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        modalSubtasks = modalSubtasks.filter(x=>x.id!==btn.dataset.removeId);
+        renderModalSubtaskList();
+      });
+    });
+    el.querySelectorAll('.subtask-row').forEach(row=>{
+      row.addEventListener('dragstart', ()=>{
+        draggedModalSubtaskId = row.dataset.subId;
+        row.style.opacity = '0.4';
+      });
+      row.addEventListener('dragend', ()=>{ row.style.opacity = ''; draggedModalSubtaskId = null; });
+      row.addEventListener('dragover', e=>{ e.preventDefault(); });
+      row.addEventListener('drop', e=>{
+        e.preventDefault();
+        const targetId = row.dataset.subId;
+        if(!draggedModalSubtaskId || draggedModalSubtaskId === targetId) return;
+        const fromIdx = modalSubtasks.findIndex(s=>s.id===draggedModalSubtaskId);
+        const toIdx = modalSubtasks.findIndex(s=>s.id===targetId);
+        if(fromIdx === -1 || toIdx === -1) return;
+        const [moved] = modalSubtasks.splice(fromIdx, 1);
+        modalSubtasks.splice(toIdx, 0, moved);
+        renderModalSubtaskList();
+      });
+    });
+  }
+  function showModalSubtaskInput(){
+    document.getElementById('modalSubtaskAddRow').style.display = 'flex';
+    document.getElementById('modalSubtaskAddBtn').style.display = 'none';
+    document.getElementById('modalSubtaskInput').focus();
+  }
+  function hideModalSubtaskInput(){
+    document.getElementById('modalSubtaskAddRow').style.display = 'none';
+    document.getElementById('modalSubtaskAddBtn').style.display = '';
+    document.getElementById('modalSubtaskInput').value = '';
+  }
+  function commitModalSubtask(){
+    const input = document.getElementById('modalSubtaskInput');
+    const text = input.value.trim();
+    if(!text) return;
+    modalSubtasks.push({ id: 'st_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7), text, done:false });
+    input.value = '';
+    renderModalSubtaskList();
+    showModalSubtaskInput();
+  }
 
   let taskHoldStepperUnit = 'days';
   let taskHoldStepperValue = 2;
@@ -2226,8 +2416,6 @@
     updateTaskHoldSummary();
   });
 
-  let pendingSave = null;
-
   async function saveTaskFromForm(){
     const title = document.getElementById('fTitle').value.trim();
     if(!title){ document.getElementById('fTitle').focus(); return; }
@@ -2243,7 +2431,8 @@
       daily: document.getElementById('fDaily').checked,
       weekly: document.getElementById('fWeekly').checked,
       weeklyDays: getWeeklyDaysValue().length ? getWeeklyDaysValue() : [new Date().getDay()],
-      tags
+      tags,
+      subtasks: modalSubtasks.map(s => ({ id: s.id, text: s.text, done: s.done }))
     };
 
     if(document.getElementById('fStartOnHold').checked){
@@ -2255,28 +2444,15 @@
       Object.assign(data, holdFields);
     }
 
-    if(data.priority === 1){
-      const conflict = tasks.find(t => t.status === 'active' && t.priority === 1 && t.id !== id);
-      if(conflict){
-        pendingSave = { id, data };
-        document.getElementById('conflictTaskName').textContent = conflict.title;
-        document.getElementById('conflictModalOverlay').classList.add('open');
-        return;
-      }
-    }
-    await finalizeSave(id, data, null);
+    await finalizeSave(id, data);
   }
 
-  async function finalizeSave(id, data, bumpConflictId){
+  async function finalizeSave(id, data){
     if(id){
       const existing = tasks.find(x=>x.id===id);
       snapshotForUndo(`edited "${existing ? existing.title : data.title}"`);
     } else {
       snapshotForUndo(`added "${data.title}"`);
-    }
-    if(bumpConflictId){
-      const conflictTask = tasks.find(t => t.id === bumpConflictId);
-      if(conflictTask) touch(conflictTask).priority = 2;
     }
     if(id){
       const t = tasks.find(x=>x.id===id);
@@ -2598,60 +2774,59 @@ ${taskLines}`;
 
   document.getElementById('cancelHoldBtn').addEventListener('click', closeHoldModal);
   document.getElementById('holdModalOverlay').addEventListener('click', (e)=>{ if(e.target.id==='holdModalOverlay') closeHoldModal(); });
-  document.querySelectorAll('.hold-options button').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const until = new Date(Date.now() + Number(btn.dataset.mins)*60000).toISOString();
-      confirmHold(until);
-    });
+  document.getElementById('holdQuick60Btn').addEventListener('click', ()=>{
+    document.getElementById('holdMethod').value = 'quick60';
+    document.getElementById('holdQuick60Btn').classList.add('toggle-active');
+    document.getElementById('holdQuick240Btn').classList.remove('toggle-active');
+    updateHoldSummary();
+  });
+  document.getElementById('holdQuick240Btn').addEventListener('click', ()=>{
+    document.getElementById('holdMethod').value = 'quick240';
+    document.getElementById('holdQuick240Btn').classList.add('toggle-active');
+    document.getElementById('holdQuick60Btn').classList.remove('toggle-active');
+    updateHoldSummary();
   });
   document.getElementById('holdUnitDaysBtn').addEventListener('click', ()=>{
     holdStepperUnit = 'days';
     const [min,max] = holdStepperBounds.days;
     holdStepperValue = Math.min(Math.max(holdStepperValue, min), max);
+    document.getElementById('holdMethod').value = 'stretch';
+    document.getElementById('holdQuick60Btn').classList.remove('toggle-active');
+    document.getElementById('holdQuick240Btn').classList.remove('toggle-active');
     updateHoldStepperUI();
+    updateHoldSummary();
   });
   document.getElementById('holdUnitWeeksBtn').addEventListener('click', ()=>{
     holdStepperUnit = 'weeks';
     const [min,max] = holdStepperBounds.weeks;
     holdStepperValue = Math.min(Math.max(holdStepperValue, min), max);
+    document.getElementById('holdMethod').value = 'stretch';
+    document.getElementById('holdQuick60Btn').classList.remove('toggle-active');
+    document.getElementById('holdQuick240Btn').classList.remove('toggle-active');
     updateHoldStepperUI();
+    updateHoldSummary();
   });
   document.getElementById('holdStepDown').addEventListener('click', ()=>{
     const [min] = holdStepperBounds[holdStepperUnit];
     if(holdStepperValue > min) holdStepperValue--;
+    document.getElementById('holdMethod').value = 'stretch';
     updateHoldStepperUI();
+    updateHoldSummary();
   });
   document.getElementById('holdStepUp').addEventListener('click', ()=>{
     const [,max] = holdStepperBounds[holdStepperUnit];
     if(holdStepperValue < max) holdStepperValue++;
+    document.getElementById('holdMethod').value = 'stretch';
     updateHoldStepperUI();
+    updateHoldSummary();
   });
-  document.getElementById('setStretchHoldBtn').addEventListener('click', ()=>{
-    const days = holdStepperUnit === 'weeks' ? holdStepperValue * 7 : holdStepperValue;
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    confirmHoldDay(localDateKey(d));
+  document.getElementById('holdCustomDay').addEventListener('change', ()=>{
+    document.getElementById('holdMethod').value = 'specific';
+    document.getElementById('holdQuick60Btn').classList.remove('toggle-active');
+    document.getElementById('holdQuick240Btn').classList.remove('toggle-active');
+    updateHoldSummary();
   });
-  document.getElementById('confirmHoldBtn').addEventListener('click', ()=>{
-    const val = document.getElementById('holdCustomDay').value;
-    if(!val) return;
-    confirmHoldDay(val);
-  });
-
-  document.getElementById('conflictConfirmBtn').addEventListener('click', async ()=>{
-    if(!pendingSave) return;
-    const conflict = tasks.find(t => t.status === 'active' && t.priority === 1 && t.id !== pendingSave.id);
-    document.getElementById('conflictModalOverlay').classList.remove('open');
-    await finalizeSave(pendingSave.id, pendingSave.data, conflict ? conflict.id : null);
-    pendingSave = null;
-  });
-  document.getElementById('conflictCancelBtn').addEventListener('click', async ()=>{
-    if(!pendingSave) return;
-    pendingSave.data.priority = 2;
-    document.getElementById('conflictModalOverlay').classList.remove('open');
-    await finalizeSave(pendingSave.id, pendingSave.data, null);
-    pendingSave = null;
-  });
+  document.getElementById('confirmHoldBtn').addEventListener('click', confirmHold);
 
   /* ============== INIT ============== */
   window.addEventListener('beforeunload', ()=>{

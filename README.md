@@ -6,7 +6,7 @@ Dispatch is a single-file web app for managing a personal work portfolio: log ta
 
 It's a single HTML file on purpose — fork it, gut what doesn't help, build on what does. There's no "correct" way to use Dispatch; if a rule or feature here fights how your brain actually works, change it.
 
-**Current version: v3.2.3** (shown in the app header; see [Version History](#version-history) below)
+**Current version: v3.3.0** (shown in the app header; see [Version History](#version-history) below)
 
 Dispatch now has two modes, toggled by a pill switch in the header, both sharing one task list, one Cloud Sync bin, everything:
 
@@ -16,16 +16,16 @@ Dispatch now has two modes, toggled by a pill switch in the header, both sharing
 ## Features
 
 - **Task tracking** — title, notes, priority, difficulty, estimated time, due date, tags.
-- **Subtasks/checklists** — "+ Add subtask" on any task (main list or Next Up) opens an inline input, with Add and Cancel buttons; each subtask gets its own checkbox, a × to remove it, and can be reordered by dragging. Checking one strikes through its text rather than deleting it, so you keep a record of what's done within a task, not just the task as a whole.
-- **Priority scale** — five named levels instead of raw numbers: **Top, High, Medium, Low, Whatevs** (Top = highest). Only one task can be Top at a time; setting a second Top prompts you to confirm the swap.
+- **Subtasks/checklists** — "+ Add subtask" from the New/Edit Task modal (under Notes), any ticket, or the Next Up card, opens an inline input with Add and Cancel buttons; each subtask gets its own checkbox, a × to remove it, and can be reordered by dragging. Checking one strikes through its text rather than deleting it, so you keep a record of what's done within a task, not just the task as a whole.
+- **Priority scale** — five named levels instead of raw numbers: **Top, High, Medium, Low, Whatevs** (Top = highest). Any number of tasks can be Top at once — no cap — with the red color flagging them visually.
 - **Difficulty gauge** — a half-moon dial (Easy → Hard) instead of a plain slider, color-coded on the same scale as priority.
 - **Automatic scoring & "Next Up"** — every task gets a numeric score from priority, difficulty, time, and due-date urgency; the top-scoring task is surfaced as a fully editable card (title, notes, priority, difficulty, time estimate, recurrence, tags all editable in place with auto-save), with a "Reroll" option.
-- **Quick Match** — four one-tap buttons (Low/High Energy × Little/Lots of Time, split at difficulty 3 and 30 minutes) that instantly set Next Up to the best-scoring task matching that combination — no API call, no cost. If the chosen combination has no matching task, it cascades down through the other combinations (checking Low Energy + Little Time last) before giving up.
+- **Quick Match** — a labeled 2×2 matrix (rows: Low/High energy, columns: Little/Lots of time, split at difficulty 3 and 30 minutes) that instantly sets Next Up to the best-scoring task matching that combination — no API call, no cost. Buttons read "Quick win," "Easy stretch," "Tough & fast," and "Deep push" rather than repeating the raw axis words; color encodes energy only (teal=low, amber=high). If the chosen combination has no matching task, it cascades down through the other combinations before giving up.
 - **Set as Next Up** — every active task's ticket in the main list has a button to manually make it the Next Up pick, overriding whatever Ask the Queue, Quick Match, or the default scoring would have shown — useful when you already know what you want to work on while browsing the list.
 - **Status actions**:
   - **Done** — closes the task (can be manually reactivated later from the Closed section if needed).
   - **Done for Day** — removes it from today's queue; it reactivates automatically the next calendar day.
-  - **Hold…** — set it aside for a quick duration (1 hr / 4 hr), a chosen number of Days or Weeks, or a specific calendar day; it reactivates automatically once the hold expires. You can also start a task on hold right from the New Task / Edit Task form (and from Quick Add) using the same options, instead of creating it active and holding it separately afterward.
+  - **Hold…** — a single tracked selection (1 hr / 4 hr quick buttons, a Days/Weeks stretch stepper, or a specific calendar day) plus a live summary and one "Set Hold" button — it reactivates automatically once the hold expires. Same pattern as "Start this task on hold" in the New Task / Edit Task form and Quick Add, so hold works identically everywhere in the app.
   - **De-prioritize** — sets it aside indefinitely until manually reactivated.
 - **Recurring tasks**:
   - **Daily** — reactivates the next day after being marked Done.
@@ -43,6 +43,7 @@ Toggle to **Aperture** in the header pill switch to swap Dispatch's passive-sugg
 - **Session Builder** (in the panel where Quick Match sits in Dispatch mode) — tap **"+ Add to Session"** on any active task's ticket (next to "Set as Next Up") to queue it, or **"Add All (highest score first)"** to queue your entire active list at once, sorted by score (this replaces whatever's currently built rather than appending to it). Drag items in the list to reorder them. A built-but-not-started session is remembered (in that browser's `localStorage`) until you start it or hit Clear — closing the tab won't lose it.
 - **A task drops out of the queue automatically** the moment it's marked Done, put on Hold, De-prioritized, or set to Done for Day — it won't linger as a stale entry once it's no longer active.
 - **Focus Timer, decoupled from task completion** — pick a work/break preset (25/5, 25/10, 20/10, 15/5, 50/10, or 45/15 minutes) to start a repeating Pomodoro cycle: work → break → work → break, with a long break (3× the short break) automatically substituted every 4th work block. **The timer runs as its own independent rhythm** — it never pauses, skips, or waits on you finishing a task. **Next Up, separately, advances the instant your current task leaves active status** — pulling in whatever's next from the Session Builder immediately, regardless of what phase the timer happens to be in. Block length comes from the preset, not each task's own time estimate, to keep the planning step light.
+- **Sound selector** (Session Builder, below Start Session) — choose from 6 completion sounds (soft chime, two-tone bell, warm pad, soft pluck, singing bowl, marimba knock), shown as a button grid with a small waveform-shape icon per sound so you can tell them apart at a glance. Every sound repeats 3 times, pause between each equal to half the sound's own length — same rule for all six, not just the default. One Preview button plays whichever is currently selected; your choice persists across sessions.
 - While a session runs: Quick Match/Ask the Queue's old spot and the task list hide, leaving only Next Up (fully editable) and the countdown. On every timer transition (work ending, break ending): a two-tone bell repeated 3 times (pause between each half the bell's own length, ~7s total), synced with a matching pulse on the card.
 - **The session ends the instant the Session Builder queue is empty** — not at the next block boundary — showing a "session complete" message and returning to normal view. **"End Timer"** is a subtle underlined link that ends the whole session manually at any point.
 - **The mode toggle locks while a session is running** (both buttons are disabled — end or complete the session first) so you can't orphan a running timer by switching modes mid-session.
@@ -141,6 +142,7 @@ score = (6 − priority) × 22 − difficulty × 6 − min(estMinutes, 240) / 24
 | v3.2.1 | Subtask polish: fixed spacing collision on the Next Up card, added a Cancel button to the add-subtask row, and subtasks can now be drag-reordered |
 | v3.2.2 | Added subtasks to quick-add.html (same add/check/delete/reorder interaction as Dispatch itself); updated this README's description of quick-add.html, which had drifted out of date since it gained full fields back in v2.8.0 |
 | v3.2.3 | Documentation accuracy pass: reworded v3.1.0's history to stop implying Aperture was ever a separate forked repo (it was only ever prototyped in chat); clarified the Claude-artifact cross-device sync claim's real scope |
+| v3.3.0 | Five changes in one release: removed the single-Top-priority cap; subtasks addable directly in the New/Edit Task modal; a 6-option sound selector (with waveform icons) for the Focus Timer; the standalone Hold modal rebuilt to a single-button pattern; Quick Match redesigned as a labeled matrix with punchier copy. Also fixed a real performance issue in the undo snapshot (JSON round-trip deep-clone swapped for `structuredClone`) |
 
 ## Notes & Limitations
 
